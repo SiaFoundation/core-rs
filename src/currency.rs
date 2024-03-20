@@ -6,7 +6,10 @@ use std::num::ParseIntError;
 use std::str::FromStr;
 use std::fmt;
 
-const CURRENCY_PRECISION: u32 = 24;
+
+// I miss untyped constants
+const SIACOIN_PRECISION_I32: i32 = 24;
+const SIACOIN_PRECISION_U32: u32 = 24;
 
 // Currency represents a quantity of Siacoins as Hastings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -140,8 +143,8 @@ impl FromStr for Currency {
 		};
 
 		let frac_digits = parts.get(1).map_or(0, |frac| frac.len() as i32);
-		let integer = integer_part * 10u128.pow((24 + scaling_factor) as u32);
-		let fraction = fraction_part * 10u128.pow((24 - frac_digits + scaling_factor) as u32);
+		let integer = integer_part * 10u128.pow((SIACOIN_PRECISION_I32 + scaling_factor) as u32);
+		let fraction = fraction_part * 10u128.pow((SIACOIN_PRECISION_I32 - frac_digits + scaling_factor) as u32);
 
 		Ok(Currency::new(integer+fraction))
 	}
@@ -161,7 +164,7 @@ impl FromStr for Currency {
 ///
 /// Returns a `Currency` instance representing the specified amount of Siacoins.
 pub fn siacoins(n: u64) -> Currency {
-	Currency::new((n as u128) * 10u128.pow(CURRENCY_PRECISION))
+	Currency::new((n as u128) * 10u128.pow(SIACOIN_PRECISION_U32))
 }
 
 #[cfg(test)]
