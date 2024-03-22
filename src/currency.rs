@@ -27,8 +27,6 @@ impl Add for Currency {
 	fn add(self, other: Self) -> Self {
 		Self(self.0.checked_add(other.0).expect("overflow in addition"))
 	}
-
-	
 }
 
 impl Sub for Currency {
@@ -70,14 +68,20 @@ impl From<ParseIntError> for CurrencyParseError {
 
 impl fmt::Display for Currency {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		f.write_str(self.0.to_string().as_str())
+    }
+} 
+
+impl Into<String> for Currency {
+	fn into(self) -> String {
 		if self.0 == 0 {
-			return write!(f, "0 SC")
+			return "0 SC".to_string()
 		}
 
 		let value_string = self.0.to_string();
 		let mut u = (value_string.len() - 1) / 3;
 		if u < 4 {
-			return write!(f, "{} H", value_string);
+			return format!("{} H", value_string)
 		} else if u > 12 {
 			u = 12;
 		}
@@ -94,15 +98,15 @@ impl fmt::Display for Currency {
 			6 => "MS",
 			7 => "GS",
 			8 => "TS",
-			_ => panic!("unexpected unit"),
+			_ => panic!("unexpected unit")
 		};
 
 		if frac.is_empty() {
-			return write!(f, "{} {}", mant, unit);
+			return format!("{} {}", mant, unit)
 		}
-		write!(f, "{}.{} {}", mant, frac, unit)
-    }
-} 
+		format!("{}.{} {}", mant, frac, unit)
+	}
+}
 
 impl FromStr for Currency {
 	type Err = CurrencyParseError;
