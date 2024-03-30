@@ -6,6 +6,8 @@ use std::num::ParseIntError;
 use std::str::FromStr;
 use std::fmt;
 
+use crate::SiaEncodable;
+
 
 // I miss untyped constants
 const SIACOIN_PRECISION_I32: i32 = 24;
@@ -50,6 +52,19 @@ impl Div for Currency {
 
 	fn div(self, other: Self) -> Self {
 		Self(self.0.checked_div(other.0).expect("division by zero"))
+	}
+}
+
+impl SiaEncodable for Currency {
+	fn encode(&self, buf: &mut Vec<u8>) {
+		let currency_buf = self.0.to_be_bytes();
+		let i = currency_buf.iter()
+        	.enumerate()
+        	.find(|&(_index, &value)| value != 0)
+        	.map_or(0, |(index, _value)| index); // Use 0 if all values are zero
+		
+		buf.extend_from_slice(&currency_buf[i..].len().to_le_bytes());
+		buf.extend_from_slice(&currency_buf[i..]);
 	}
 }
 
