@@ -1,6 +1,6 @@
 use bip39::{Mnemonic, Language, Error as MnemonicError};
 use blake2b_simd::Params as Blake2bParams;
-use crate::{PrivateKey,  Address, UnlockConditions};
+use crate::PrivateKey;
 
 pub struct Seed([u8;16]);
 
@@ -55,6 +55,7 @@ impl Seed {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::{Address,UnlockConditions};
 
 	#[test]
 	fn test_seed_from_entropy() {
