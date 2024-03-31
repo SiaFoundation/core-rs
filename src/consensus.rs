@@ -43,6 +43,11 @@ pub struct HardforkFoundation {
 	failsafe_address: Address,
 }
 
+pub struct HardforkV2 {
+	allow_height: u64,
+	require_height: u64,
+}
+
 pub struct Network {
 	pub name: String,
 	pub initial_coinbase: Currency,
@@ -55,6 +60,7 @@ pub struct Network {
 	pub hardfork_oak: HardforkOak,
 	pub hardfork_asic: HardforkASIC,
 	pub hardfork_foundation: HardforkFoundation,
+	pub hardfork_v2: HardforkV2,
 }
 
 pub struct State {
@@ -78,7 +84,9 @@ impl State {
 	}
 
 	fn replay_prefix(&self) -> &[u8] {
-		if self.index.height >= self.network.hardfork_foundation.height {
+		if self.index.height >= self.network.hardfork_v2.allow_height {
+			return &[2]
+		} else if self.index.height >= self.network.hardfork_foundation.height {
 			return &[1]
 		} else if self.index.height >= self.network.hardfork_asic.height {
 			return &[0]
@@ -258,6 +266,7 @@ impl State {
 
 #[cfg(test)]
 mod tests {
+	use crate::*;
 	use super::*;
 
 	#[test]
@@ -274,25 +283,29 @@ mod tests {
 					new_address: Address::parse_string("addr:000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69").unwrap(),
 				},
 				hardfork_tax: HardforkTax{
-					height: 2,
+					height: 0,
 				},
 				hardfork_storage_proof: HardforkStorageProof{
-					height: 4,
+					height: 0,
 				},
 				hardfork_oak: HardforkOak{
-					height: 6,
-					fix_height: 8,
+					height: 0,
+					fix_height: 0,
 					genesis_timestamp: time::SystemTime::now(),
 				},
 				hardfork_asic: HardforkASIC{
-					height: 10,
+					height: 0,
 					oak_time: time::Duration::from_secs(12),
 					oak_target: [0;32],
 				},
 				hardfork_foundation: HardforkFoundation{
-					height: 12,
+					height: 0,
 					primary_address: Address::parse_string("addr:000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69").unwrap(),
 					failsafe_address: Address::parse_string("addr:000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69").unwrap(),
+				},
+				hardfork_v2: HardforkV2{
+					allow_height: 0,
+					require_height: 0,
 				},
 			},
 
@@ -309,20 +322,59 @@ mod tests {
 			foundation_failsafe_address: Address::parse_string("000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69").unwrap(),
 		};
 
-		let txn = Transaction {
-			siacoin_inputs: Vec::new(),
-			siacoin_outputs: Vec::new(),
-			file_contracts: Vec::new(),
-			file_contract_revisions: Vec::new(),
-			storage_proofs: Vec::new(),
-			siafund_inputs: Vec::new(),
-			siafund_outputs: Vec::new(),
-			miner_fees: Vec::new(),
-			arbitrary_data: Vec::new(),
-			signatures: Vec::new(),
-		};
+		let test_cases = vec![
+			( 
+				Transaction {
+					siacoin_inputs: Vec::new(),
+					siacoin_outputs: Vec::new(),
+					file_contracts: Vec::new(),
+					file_contract_revisions: Vec::new(),
+					storage_proofs: Vec::new(),
+					siafund_inputs: Vec::new(),
+					siafund_outputs: Vec::new(),
+					miner_fees: Vec::new(),
+					arbitrary_data: Vec::new(),
+					signatures: Vec::new(),
+				}, 
+				"7a028465fc5cf200b99cd6fa4420becce66e03bc8fab62b08c5fd07e386a5281"
+			),
+			(
+				Transaction {
+					siacoin_inputs: vec![
+						SiacoinInput{
+							parent_id: SiacoinOutputID::new([32,11,215,36,166,174,135,0,92,215,179,18,74,229,52,154,221,194,213,216,219,47,225,205,251,84,248,2,69,252,37,117]),
+							unlock_conditions: UnlockConditions{
+								timelock: 0,
+								required_signatures: 1,
+								public_keys: vec![
+									UnlockKey::parse_string("ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6").unwrap(),
+								],
+							},
+						}
+					],
+					siacoin_outputs: vec![
+						SiacoinOutput{
+							value: Currency::new(67856467336433871),
+							address: Address::parse_string("addr:000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69").unwrap(),
+						}
+					],
+					file_contracts: Vec::new(),
+					file_contract_revisions: Vec::new(),
+					storage_proofs: Vec::new(),
+					siafund_inputs: Vec::new(),
+					siafund_outputs: Vec::new(),
+					miner_fees: Vec::new(),
+					arbitrary_data: Vec::new(),
+					signatures: Vec::new(),
+				},
+				"ed86b0d1e39b6e2d92285cd821c3b8734ddc9090a8718b5e5cffa4c38b8f1dbb"
+			)
+		];
 
-		let h = state.whole_sig_hash(&txn, &[0;32], 0, 0, vec![]);
-		assert_eq!(hex::encode(h), "b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24")
+		for (txn, expected) in test_cases {
+			let h = state.whole_sig_hash(&txn, &[0;32], 0, 0, vec![]);
+			print!("replay prefix {}", state.replay_prefix()[0]);
+			assert_eq!(hex::encode(h), expected)
+		}
 	}
 }

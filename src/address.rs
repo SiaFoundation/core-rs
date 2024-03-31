@@ -10,7 +10,7 @@ use hex::{encode, decode, FromHexError};
 pub struct PublicKey([u8;32]);
 
 impl PublicKey {
-	pub fn new(key: [u8;32]) -> PublicKey {
+	pub fn new(key: [u8;32]) -> Self {
 		PublicKey(key)
 	}
 
@@ -158,17 +158,23 @@ impl SiaEncodable for Algorithm {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum ParseUnlockKeyError {
+	MissingPrefix,
+	InvalidLength,
+	UnkownAlgorithm,
+	FromHexError,
+}
+
+impl From<FromHexError> for ParseUnlockKeyError {
+	fn from(_: FromHexError) -> Self {
+		ParseUnlockKeyError::FromHexError
+	}
+}
+
+#[derive(Debug, PartialEq)]
 pub struct UnlockKey {
 	algorithm: Algorithm,
 	public_key: PublicKey,
-}
-
-impl SiaEncodable for UnlockKey {
-	fn encode(&self, buf: &mut Vec<u8>) {
-		self.algorithm.encode(buf);
-		buf.extend_from_slice(&(32 as u64).to_le_bytes());
-		buf.extend_from_slice(&self.public_key.as_array());
-	}
 }
 
 impl UnlockKey {
@@ -178,13 +184,41 @@ impl UnlockKey {
 			public_key,
 		}
 	}
+
+	pub fn parse_string(s: &str) -> Result<Self, ParseUnlockKeyError> {
+		let parts: Vec<&str> = s.split(':').collect();
+		if parts.len() != 2 {
+			return Err(ParseUnlockKeyError::MissingPrefix);
+		}
+
+		let algorithm = match parts[0] {
+			"ed25519" => Algorithm::ED25519,
+			_ => return Err(ParseUnlockKeyError::UnkownAlgorithm),
+		};
+
+		let key = hex::decode(parts[1])?;
+		if key.len() != 32 {
+			return Err(ParseUnlockKeyError::InvalidLength);
+		}
+
+		Ok(Self::new(algorithm, PublicKey::new(key.try_into().unwrap())))
+	}
+}
+
+
+impl SiaEncodable for UnlockKey {
+	fn encode(&self, buf: &mut Vec<u8>) {
+		self.algorithm.encode(buf);
+		buf.extend_from_slice(&(32 as u64).to_le_bytes());
+		buf.extend_from_slice(&self.public_key.as_array());
+	}
 }
 
 // specifies the conditions for spending an output or revising a file contract.
 pub struct UnlockConditions {
-	timelock: u64,
-	public_keys: Vec<UnlockKey>,
-	required_signatures: u64,
+	pub timelock: u64,
+	pub public_keys: Vec<UnlockKey>,
+	pub required_signatures: u64,
 }
 
 impl SiaEncodable for UnlockConditions {

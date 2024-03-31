@@ -11,7 +11,11 @@ const SIAFUND_OUTPUT_ID_PREFIX : [u8;16] = [b's', b'i', b'a', b'f', b'u', b'n', 
 pub struct SiacoinOutputID([u8;32]);
 
 impl SiacoinOutputID {
-	pub fn	as_bytes(&self) -> [u8;32] {
+	pub fn new(data: [u8;32]) -> Self {
+		SiacoinOutputID(data)
+	}
+
+	pub fn as_bytes(&self) -> [u8;32] {
 		self.0
 	}
 }
