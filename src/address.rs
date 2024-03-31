@@ -3,7 +3,7 @@ use blake2b_simd::Params;
 use crate::blake2b::LEAF_HASH_PREFIX;
 use std::fmt;
 use crate::SiaEncodable;
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{SigningKey, Signer};
 use hex::{encode, decode, FromHexError};
 
 #[derive(Debug, PartialEq)]
@@ -38,6 +38,11 @@ impl PrivateKey {
 
 	pub fn public_key(&self) -> PublicKey {
 		PublicKey::new(self.0[32..].try_into().unwrap())
+	}
+
+	pub fn sign_hash(&self, hash: &[u8;32]) -> [u8;64] {
+		let sk = SigningKey::from_bytes(&self.0[..32].try_into().unwrap());
+		sk.sign(hash).to_bytes()
 	}
 }
 
@@ -117,6 +122,12 @@ impl Into<String> for Address {
 
 		buf[32..].copy_from_slice(&h.as_bytes()[..6]);
 		hex::encode(buf)
+	}
+}
+
+impl SiaEncodable for Address {
+	fn encode(&self, buf: &mut Vec<u8>) {
+		buf.extend_from_slice(&self.0);
 	}
 }
 
