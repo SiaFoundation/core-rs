@@ -100,20 +100,14 @@ impl From<ParseIntError> for CurrencyParseError {
 
 impl fmt::Display for Currency {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		f.write_str(self.0.to_string().as_str())
-    }
-} 
-
-impl Into<String> for Currency {
-	fn into(self) -> String {
 		if self.0 == 0 {
-			return "0 SC".to_string()
+			return f.write_str("0 SC");
 		}
 
 		let value_string = self.0.to_string();
 		let mut u = (value_string.len() - 1) / 3;
 		if u < 4 {
-			return format!("{} H", value_string)
+			return write!(f, "{} H", value_string);
 		} else if u > 12 {
 			u = 12;
 		}
@@ -134,11 +128,11 @@ impl Into<String> for Currency {
 		};
 
 		if frac.is_empty() {
-			return format!("{} {}", mant, unit)
+			return write!(f, "{} {}", mant, unit);
 		}
-		format!("{}.{} {}", mant, frac, unit)
-	}
-}
+		write!(f, "{}.{} {}", mant, frac, unit)
+    }
+} 
 
 impl FromStr for Currency {
 	type Err = CurrencyParseError;
