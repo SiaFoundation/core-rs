@@ -9,6 +9,7 @@ pub mod currency;
 pub mod seed;
 pub mod address;
 pub mod transactions;
+pub mod signing;
 
 pub(crate) mod blake2b;
 
@@ -17,6 +18,7 @@ pub use seed::*;
 pub use currency::*;
 pub use address::*;
 pub use transactions::*;
+pub use signing::*;
 
 pub struct Hash256([u8;32]);
 

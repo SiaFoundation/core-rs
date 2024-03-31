@@ -6,6 +6,7 @@ use crate::SiaEncodable;
 use ed25519_dalek::{SigningKey, Signer};
 use hex::{encode, decode, FromHexError};
 
+
 #[derive(Debug, PartialEq)]
 pub struct PublicKey([u8;32]);
 
