@@ -7,6 +7,7 @@ use ed25519_dalek::{SigningKey, Signer, VerifyingKey, Verifier, Signature};
 use hex::{encode, decode, FromHexError};
 
 
+/// An ed25519 public key that can be used to verify a signature
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct PublicKey([u8;32]);
 
@@ -22,6 +23,7 @@ impl PublicKey {
 	}
 }
 
+/// An ed25519 private key that can be used to sign a hash
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct PrivateKey([u8;64]);
 
@@ -64,6 +66,7 @@ impl From<FromHexError> for AddressParseError {
 	}
 }
 
+/// An address that can be used to receive UTXOs
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Address([u8;32]);
 
@@ -170,7 +173,10 @@ impl From<FromHexError> for ParseUnlockKeyError {
 	}
 }
 
-/// A public key that can be used to spend a utxo or revise a file contract
+/// A generic public key that can be used to spend a utxo or revise a file
+///  contract
+/// 
+/// Currently only supports ed25519 keys
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct UnlockKey {
 	algorithm: Algorithm,
