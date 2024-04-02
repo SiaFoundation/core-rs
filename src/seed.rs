@@ -7,6 +7,7 @@ pub struct Seed([u8;16]);
 #[derive(Debug, PartialEq)]
 pub enum SeedError {
 	MnemonicError,
+	InvalidLength
 }
 
 impl From<MnemonicError> for SeedError {
@@ -22,12 +23,14 @@ impl Seed {
 
 	pub fn from_mnemonic(s: &str) -> Result<Self, SeedError> {
 		let m = Mnemonic::parse_in(Language::English, s)?;
+		if m.to_entropy().len() != 16 {
+			return Err(SeedError::InvalidLength);
+		}
 		Ok(Self(m.to_entropy().as_slice().try_into().unwrap()))
 	}
 
-	pub fn to_mnemonic(&self) -> Result<String, MnemonicError> {
-		let m = Mnemonic::from_entropy_in(Language::English, &self.0)?;
-		Ok(m.to_string())
+	pub fn to_mnemonic(&self) -> String {
+		Mnemonic::from_entropy_in(Language::English, &self.0).unwrap().to_string()
 	}
 
 	pub fn private_key(&self, index : u64) -> PrivateKey {
@@ -88,7 +91,7 @@ mod tests {
 
 		for (entropy, expected) in test_cases {
 			let seed = Seed::from_entropy(entropy);
-			assert_eq!(seed.to_mnemonic().unwrap(), expected);
+			assert_eq!(seed.to_mnemonic(), expected);
 		}
 	}
 

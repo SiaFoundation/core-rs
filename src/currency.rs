@@ -1,7 +1,4 @@
-use std::ops::Add;
-use std::ops::Sub;
-use std::ops::Mul;
-use std::ops::Div;
+use std::ops::{Add, Sub, Mul, Div};
 use std::num::ParseIntError;
 use std::str::FromStr;
 use std::fmt;
@@ -22,6 +19,48 @@ impl Currency {
 		Currency(value)
 	}
 
+	pub fn parse_string(s: &str) -> Result<Self, CurrencyParseError> {
+		let i = s.find(|c: char| !c.is_digit(10) && c != '.').unwrap_or(s.len());
+		let (value, unit) = s.split_at(i);
+		let unit = unit.trim();
+
+		if unit.is_empty() || unit == "H" {
+			let value = value.parse::<u128>()?;
+			return Ok(Currency::new(value))
+		}
+
+		let scaling_factor: i32 = match unit {
+			"pS" => -12,
+			"nS" => -9,
+			"uS" => -6,
+			"mS" => -3,
+			"SC" => 0,
+			"KS" => 3,
+			"MS" => 6,
+			"GS" => 9,
+			"TS" => 12,
+			&_ => return Err(CurrencyParseError::InvalidUnit(unit.to_string())),
+		};
+
+		let parts: Vec<&str> = value.split('.').collect();
+		if parts.len() > 2 {
+			return Err(CurrencyParseError::InvalidFormat("too many decimal points".to_string()))
+		}
+
+		let integer_part = parts[0].parse::<u128>().map_err(|_| CurrencyParseError::InvalidFormat("invalid integer part".to_string()))?;
+		let fraction_part = if parts.len() == 2 {
+			parts[1].parse::<u128>().map_err(|_| CurrencyParseError::InvalidFormat("invalid integer part".to_string()))?
+		} else {
+			0
+		};
+
+		let frac_digits = parts.get(1).map_or(0, |frac| frac.len() as i32);
+		let integer = integer_part * 10u128.pow((SIACOIN_PRECISION_I32 + scaling_factor) as u32);
+		let fraction = fraction_part * 10u128.pow((SIACOIN_PRECISION_I32 - frac_digits + scaling_factor) as u32);
+
+		Ok(Currency::new(integer+fraction))
+	}
+
 	/// Converts a given amount of Siacoins into the `Currency` type.
 	///
 	/// This function takes the amount of Siacoins as a `u64` and converts it into
@@ -38,13 +77,33 @@ impl Currency {
 	pub fn siacoins(n: u64) -> Self {
 		Currency::new((n as u128) * 10u128.pow(SIACOIN_PRECISION_U32))
 	}
+
+	pub fn checked_add(self, other: Currency) -> Option<Self> {
+		let v = self.0.checked_add(other.0)?;
+		Some(Currency(v))
+	}
+
+	pub fn checked_sub(self, other: Currency) -> Option<Self> {
+		let v = self.0.checked_sub(other.0)?;
+		Some(Currency(v))
+	}
+
+	pub fn checked_mul(self, other: Currency) -> Option<Self> {
+		let v = self.0.checked_mul(other.0)?;
+		Some(Currency(v))
+	}
+
+	pub fn checked_div(self, other: Currency) -> Option<Self> {
+		let v = self.0.checked_div(other.0)?;
+		Some(Currency(v))
+	}
 }
 
 impl Add for Currency {
 	type Output = Self;
 
 	fn add(self, other: Self) -> Self {
-		Self(self.0.checked_add(other.0).expect("overflow in addition"))
+		Self(self.0 + other.0)
 	}
 }
 
@@ -52,7 +111,7 @@ impl Sub for Currency {
 	type Output = Self;
 
 	fn sub(self, other: Self) -> Self {
-		Self(self.0.checked_sub(other.0).expect("underflow in subtraction"))
+		Self(self.0 - other.0)
 	}
 }
 
@@ -60,7 +119,7 @@ impl Mul for Currency {
 	type Output = Self;
 
 	fn mul(self, other: Self) -> Self {
-		Self(self.0.checked_mul(other.0).expect("overflow in multiplication"))
+		Self(self.0 * other.0)
 	}
 }
 
@@ -68,7 +127,7 @@ impl Div for Currency {
 	type Output = Self;
 
 	fn div(self, other: Self) -> Self {
-		Self(self.0.checked_div(other.0).expect("division by zero"))
+		Self(self.0 / other.0)
 	}
 }
 

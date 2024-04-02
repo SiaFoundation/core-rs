@@ -3,32 +3,30 @@ use blake2b_simd::Params;
 use crate::blake2b::LEAF_HASH_PREFIX;
 use std::fmt;
 use crate::SiaEncodable;
-use ed25519_dalek::{SigningKey, Signer};
+use ed25519_dalek::{SigningKey, Signer, VerifyingKey, Verifier, Signature};
 use hex::{encode, decode, FromHexError};
 
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct PublicKey([u8;32]);
 
 impl PublicKey {
-	pub fn new(key: [u8;32]) -> Self {
-		PublicKey(key)
-	}
-
 	pub fn as_array(&self) -> [u8;32] {
 		self.0
 	}
+
+	pub fn verify_hash(&self, hash: &[u8;32], signature: &[u8;64]) -> bool {
+		let pk = VerifyingKey::from_bytes(&self.0).unwrap();
+		let sig = Signature::from_bytes(signature);
+		pk.verify(hash, &sig).is_ok()
+	}
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct PrivateKey([u8;64]);
 
 impl PrivateKey {
-	pub fn new(key: [u8;64]) -> PrivateKey {
-		PrivateKey(key)
-	}
-
-	pub fn from_seed(seed: &[u8;32]) -> PrivateKey {
+	pub fn from_seed(seed: &[u8;32]) -> Self {
 		let sk = SigningKey::from_bytes(seed);
 		PrivateKey(sk.to_keypair_bytes())
 	}
@@ -38,7 +36,7 @@ impl PrivateKey {
 	}
 
 	pub fn public_key(&self) -> PublicKey {
-		PublicKey::new(self.0[32..].try_into().unwrap())
+		PublicKey(self.0[32..].try_into().unwrap())
 	}
 
 	pub fn sign_hash(&self, hash: &[u8;32]) -> [u8;64] {
@@ -66,7 +64,7 @@ impl From<FromHexError> for AddressParseError {
 	}
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Address([u8;32]);
 
 impl Address {
@@ -132,7 +130,7 @@ impl SiaEncodable for Address {
 	}
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Algorithm {
 	ED25519,
 }
@@ -172,13 +170,15 @@ impl From<FromHexError> for ParseUnlockKeyError {
 	}
 }
 
-#[derive(Debug, PartialEq)]
+/// A public key that can be used to spend a utxo or revise a file contract
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct UnlockKey {
 	algorithm: Algorithm,
 	public_key: PublicKey,
 }
 
 impl UnlockKey {
+	/// Creates a new UnlockKey
 	pub fn new(algorithm: Algorithm, public_key: PublicKey) -> UnlockKey {
 		UnlockKey {
 			algorithm,
@@ -186,6 +186,8 @@ impl UnlockKey {
 		}
 	}
 
+	/// Parses an UnlockKey from a string
+	/// The string should be in the format "algorithm:public_key"
 	pub fn parse_string(s: &str) -> Result<Self, ParseUnlockKeyError> {
 		let parts: Vec<&str> = s.split(':').collect();
 		if parts.len() != 2 {
@@ -202,7 +204,17 @@ impl UnlockKey {
 			return Err(ParseUnlockKeyError::InvalidLength);
 		}
 
-		Ok(Self::new(algorithm, PublicKey::new(key.try_into().unwrap())))
+		Ok(Self::new(algorithm, PublicKey(key.try_into().unwrap())))
+	}
+
+	// Returns the public key of the UnlockKey
+	pub fn public_key(&self) -> PublicKey {
+		self.public_key
+	}
+
+	/// Returns the UnlockKey as a string
+	pub fn as_string(&self) -> String {
+		format!("{}:{}", self.algorithm, encode(self.public_key.0))
 	}
 }
 
@@ -216,6 +228,7 @@ impl SiaEncodable for UnlockKey {
 }
 
 // specifies the conditions for spending an output or revising a file contract.
+#[derive(Debug, PartialEq)]
 pub struct UnlockConditions {
 	pub timelock: u64,
 	pub public_keys: Vec<UnlockKey>,
@@ -328,7 +341,7 @@ mod tests {
 		];
 
 		for (expected, public_key) in test_cases {
-			let public_key = PublicKey::new(public_key.as_slice().try_into().unwrap());
+			let public_key = PublicKey(public_key.as_slice().try_into().unwrap());
 			let uc = UnlockConditions::standard_unlock_conditions(public_key);
 
 			assert_eq!(uc.address(), expected)
