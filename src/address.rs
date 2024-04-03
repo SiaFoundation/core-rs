@@ -3,8 +3,8 @@ use core::fmt;
 use crate::blake2b::Accumulator;
 use blake2b_simd::Params;
 use crate::blake2b::LEAF_HASH_PREFIX;
-use crate::{SiaEncodable, HexParseError};
-use ed25519_dalek::{SigningKey, Signer, VerifyingKey, Verifier, Signature};
+use crate::{SiaEncodable, HexParseError, Signature};
+use ed25519_dalek::{SigningKey, Signer, VerifyingKey, Verifier};
 
 /// An ed25519 public key that can be used to verify a signature
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -15,10 +15,9 @@ impl PublicKey {
 		self.0
 	}
 
-	pub fn verify_hash(&self, hash: &[u8;32], signature: &[u8;64]) -> bool {
+	pub fn verify_hash(&self, hash: &[u8;32], signature: Signature) -> bool {
 		let pk = VerifyingKey::from_bytes(&self.0).unwrap();
-		let sig = Signature::from_bytes(signature);
-		pk.verify(hash, &sig).is_ok()
+		pk.verify(hash, &signature.into()).is_ok()
 	}
 }
 
@@ -40,9 +39,9 @@ impl PrivateKey {
 		PublicKey(self.0[32..].try_into().unwrap())
 	}
 
-	pub fn sign_hash(&self, hash: &[u8;32]) -> [u8;64] {
+	pub fn sign_hash(&self, hash: &[u8;32]) -> Signature {
 		let sk = SigningKey::from_bytes(&self.0[..32].try_into().unwrap());
-		sk.sign(hash).to_bytes()
+		Signature::new(sk.sign(hash).to_vec())
 	}
 }
 

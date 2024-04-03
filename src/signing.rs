@@ -1,7 +1,9 @@
+use core::fmt;
+
 use crate::consensus::ChainIndex;
 use crate::transactions::{Transaction, CoveredFields};
 use blake2b_simd::Params;
-use crate::SiaEncodable;
+use crate::{HexParseError, SiaEncodable};
 
 pub struct NetworkHardforks {
 	pub asic_height: u64,
@@ -15,6 +17,49 @@ pub struct NetworkHardforks {
 pub struct SigningState {
 	index: ChainIndex,
 	hardforks: NetworkHardforks,
+}
+
+#[derive(Debug, Clone)]
+pub struct Signature(Vec<u8>);
+
+impl Signature {
+	pub fn new(data: Vec<u8>) -> Self {
+		Signature(data)
+	}
+
+	pub fn data(&self) -> &[u8] {
+		&self.0
+	}
+
+	pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
+		let s = match s.split_once(":"){
+			Some((_prefix, suffix)) => suffix,
+			None => s
+		};
+
+		let data = hex::decode(s).map_err(|e| HexParseError::HexError(e))?;
+		Ok(Signature(data))
+	}
+}
+
+impl Into<ed25519_dalek::Signature> for Signature {
+	fn into(self) -> ed25519_dalek::Signature {
+		ed25519_dalek::Signature::from_bytes(self.0.as_slice().try_into().unwrap())
+	}
+
+}
+
+impl SiaEncodable for Signature {
+	fn encode(&self, buf: &mut Vec<u8>) {
+		buf.extend_from_slice(&(self.0.len() as u64).to_le_bytes());
+		buf.extend_from_slice(&self.0);
+	}
+}
+
+impl fmt::Display for Signature {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "sig:{}", hex::encode(&self.0))
+	}
 }
 
 impl SigningState {

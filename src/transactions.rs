@@ -1,7 +1,8 @@
 use core::fmt;
 
-use crate::currency::Currency;
-use crate::address::{Address, UnlockConditions};
+use crate::Signature;
+use crate::Currency;
+use crate::{Address, UnlockConditions};
 use crate::{HexParseError, Hash256, SiaEncodable};
 use blake2b_simd::{Params, State};
 
@@ -318,21 +319,21 @@ impl SiaEncodable for CoveredFields {
 }
 
 #[derive(Debug, Clone)]
-pub struct Signature {
+pub struct TransactionSignature {
 	pub parent_id: Hash256,
 	pub public_key_index: u64,
 	pub timelock: u64,
 	pub covered_fields: CoveredFields,
-	pub signature: [u8;64],
+	pub signature: Signature,
 }
 
-impl SiaEncodable for Signature {
+impl SiaEncodable for TransactionSignature {
 	fn encode(&self, buf: &mut Vec<u8>) {
 		buf.extend_from_slice(&self.parent_id.as_bytes());
 		buf.extend_from_slice(&self.public_key_index.to_le_bytes());
 		buf.extend_from_slice(&self.timelock.to_le_bytes());
 		self.covered_fields.encode(buf);
-		buf.extend_from_slice(&self.signature);
+		self.signature.encode(buf);
 	}
 }
 
@@ -372,7 +373,7 @@ pub struct Transaction {
 	pub file_contracts: Vec<FileContract>,
 	pub file_contract_revisions: Vec<FileContractRevision>,
 	pub storage_proofs: Vec<StorageProof>,
-	pub signatures: Vec<Signature>,
+	pub signatures: Vec<TransactionSignature>,
 	pub arbitrary_data: Vec<Vec<u8>>,
 }
 

@@ -31,7 +31,7 @@ pub enum HexParseError {
 	HexError(hex::FromHexError),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Hash256([u8;32]);
 
 impl Hash256 {
