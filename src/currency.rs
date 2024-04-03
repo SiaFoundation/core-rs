@@ -1,7 +1,5 @@
-use std::ops::{Add, Sub, Mul, Div};
-use std::num::ParseIntError;
-use std::str::FromStr;
-use std::fmt;
+use core::ops::{Add, Sub, Mul, Div};
+use core::num::ParseIntError;
 
 use crate::SiaEncodable;
 
@@ -22,6 +20,7 @@ impl Currency {
 	pub fn parse_string(s: &str) -> Result<Self, CurrencyParseError> {
 		let i = s.find(|c: char| !c.is_digit(10) && c != '.').unwrap_or(s.len());
 		let (value, unit) = s.split_at(i);
+		let value = value.trim();
 		let unit = unit.trim();
 
 		if unit.is_empty() || unit == "H" {
@@ -139,7 +138,7 @@ impl SiaEncodable for Currency {
         	.find(|&(_index, &value)| value != 0)
         	.map_or(16, |(index, _value)| index); // 16 if all bytes are 0
 		
-		buf.extend_from_slice(&currency_buf[i..].len().to_le_bytes());
+		buf.extend_from_slice(&(currency_buf[i..].len() as u64).to_le_bytes());
 		buf.extend_from_slice(&currency_buf[i..]);
 	}
 }
@@ -157,7 +156,7 @@ impl From<ParseIntError> for CurrencyParseError {
     }
 }
 
-impl fmt::Display for Currency {
+/*impl fmt::Display for Currency {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		if self.0 == 0 {
 			return f.write_str("0 SC");
@@ -237,13 +236,13 @@ impl FromStr for Currency {
 
 		Ok(Currency::new(integer+fraction))
 	}
-}
+}*/
 
 #[cfg(test)]
 mod tests {
 	use super::*;
 
-	#[test]
+/*	#[test]
 	fn test_display() {
 		let test_cases = vec![
 			(Currency::new(1), "1 H"),
@@ -279,7 +278,7 @@ mod tests {
 		for (currency, expected) in test_cases {
 			assert_eq!(currency.to_string(), expected);
 		}
-	}
+	}*/
 	
 	#[test]
 	fn test_from_str() {
@@ -297,12 +296,12 @@ mod tests {
 			("1 KS", Currency::siacoins(1000)),
 			("10 KS", Currency::siacoins(10000)),
 			("65.535 KS", Currency::siacoins(u16::MAX as u64)),
-			("100 KS", Currency::siacoins(100000)),
+			("100KS", Currency::siacoins(100000)),
 			("1 MS", Currency::siacoins(1000000)),
 			("10 MS", Currency::siacoins(10000000)),
 			("100 MS", Currency::siacoins(100000000)),
 			("1 GS", Currency::siacoins(1000000000)),
-			("4.294967295 GS", Currency::siacoins(u32::MAX as u64)),
+			("4.294967295GS", Currency::siacoins(u32::MAX as u64)),
 			("10 GS", Currency::siacoins(10000000000)),
 			("100 GS", Currency::siacoins(100000000000)),
 			("1 TS", Currency::siacoins(1000000000000)),
@@ -314,7 +313,7 @@ mod tests {
 			("340.282366920938463463374607431768211455 TS", Currency::new(u128::MAX)),
 		];
 		for (input, expected) in test_cases {
-			assert_eq!(input.parse::<Currency>().unwrap(), expected);
+			assert_eq!(Currency::parse_string(input).unwrap(), expected);
 		}
 	}
 

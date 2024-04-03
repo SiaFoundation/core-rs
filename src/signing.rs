@@ -49,7 +49,7 @@ impl SigningState {
 			.to_state();
 
 		let mut buf = Vec::new();
-		state.update(&txn.siacoin_inputs.len().to_le_bytes());
+		state.update(&(txn.siacoin_inputs.len() as u64).to_le_bytes());
 		for input in txn.siacoin_inputs.iter() {
 			buf.clear();
 			state.update(self.replay_prefix());
@@ -57,35 +57,35 @@ impl SigningState {
 			state.update(&buf);
 		}
 
-		state.update(&txn.siacoin_outputs.len().to_le_bytes());
+		state.update(&(txn.siacoin_outputs.len() as u64).to_le_bytes());
 		for output in txn.siacoin_outputs.iter() {
 			buf.clear();
 			output.encode(&mut buf);
 			state.update(&buf);
 		}
 
-		state.update(&txn.file_contracts.len().to_le_bytes());
+		state.update(&(txn.file_contracts.len() as u64).to_le_bytes());
 		for file_contract in txn.file_contracts.iter() {
 			buf.clear();
 			file_contract.encode(&mut buf);
 			state.update(&buf);
 		}
 
-		state.update(&txn.file_contract_revisions.len().to_le_bytes());
+		state.update(&(txn.file_contract_revisions.len() as u64).to_le_bytes());
 		for file_contract_revision in txn.file_contract_revisions.iter() {
 			buf.clear();
 			file_contract_revision.encode(&mut buf);
 			state.update(&buf);
 		}
 
-		state.update(&txn.storage_proofs.len().to_le_bytes());
+		state.update(&(txn.storage_proofs.len() as u64).to_le_bytes());
 		for storage_proof in txn.storage_proofs.iter() {
 			buf.clear();
 			storage_proof.encode(&mut buf);
 			state.update(&buf);
 		}
 
-		state.update(&txn.siafund_inputs.len().to_le_bytes());
+		state.update(&(txn.siafund_inputs.len() as u64).to_le_bytes());
 		for input in txn.siafund_inputs.iter() {
 			buf.clear();
 			state.update(self.replay_prefix());
@@ -93,23 +93,23 @@ impl SigningState {
 			state.update(&buf);
 		}
 
-		state.update(&txn.siafund_outputs.len().to_le_bytes());
+		state.update(&(txn.siafund_outputs.len() as u64).to_le_bytes());
 		for output in txn.siafund_outputs.iter() {
 			buf.clear();
 			output.encode(&mut buf);
 			state.update(&buf);
 		}
 
-		state.update(&txn.miner_fees.len().to_le_bytes());
+		state.update(&(txn.miner_fees.len() as u64).to_le_bytes());
 		for fee in txn.miner_fees.iter() {
 			buf.clear();
 			fee.encode(&mut buf);
 			state.update(&buf);
 		}
 
-		state.update(&txn.arbitrary_data.len().to_le_bytes());
+		state.update(&(txn.arbitrary_data.len() as u64).to_le_bytes());
 		for data in txn.arbitrary_data.iter() {
-			state.update(&data.len().to_le_bytes());
+			state.update(&(data.len() as u64).to_le_bytes());
 			state.update(&data);
 		}
 
@@ -184,7 +184,7 @@ impl SigningState {
 		}
 
 		for i in covered_fields.arbitrary_data.into_iter() {
-			state.update(&txn.arbitrary_data[i as usize].len().to_le_bytes());
+			state.update(&(txn.arbitrary_data[i as usize].len() as u64).to_le_bytes());
 			state.update(&txn.arbitrary_data[i as usize]);
 		}
 
