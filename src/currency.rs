@@ -1,5 +1,5 @@
-use core::ops::{Add, Sub, Mul, Div};
 use core::num::ParseIntError;
+use std::ops::{Deref, DerefMut};
 
 use crate::SiaEncodable;
 
@@ -11,6 +11,28 @@ const SIACOIN_PRECISION_U32: u32 = 24;
 // Currency represents a quantity of Siacoins as Hastings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Currency(u128);
+
+// Implement Deref and DerefMut to be able to implicitly use Currency as a u128
+// This gives us all the traits that u128 already implements for free.
+impl Deref for Currency {
+	type Target = u128;
+	fn deref(&self) -> &u128 { &self.0 }
+}
+
+impl DerefMut for Currency {
+	fn deref_mut(&mut self) -> &mut u128 { &mut self.0 }
+}
+
+// Implement AsRef as well to be able to implicitly obtain a &u128 from a Currency as well.
+impl<T> AsRef<T> for Currency
+	where
+		T: ?Sized,
+		<Currency as Deref>::Target: AsRef<T>,
+{
+	fn as_ref(&self) -> &T {
+		self.deref().as_ref()
+	}
+}
 
 impl Currency {
 	pub fn new(value: u128) -> Self {
@@ -95,38 +117,6 @@ impl Currency {
 	pub fn checked_div(self, other: Currency) -> Option<Self> {
 		let v = self.0.checked_div(other.0)?;
 		Some(Currency(v))
-	}
-}
-
-impl Add for Currency {
-	type Output = Self;
-
-	fn add(self, other: Self) -> Self {
-		Self(self.0 + other.0)
-	}
-}
-
-impl Sub for Currency {
-	type Output = Self;
-
-	fn sub(self, other: Self) -> Self {
-		Self(self.0 - other.0)
-	}
-}
-
-impl Mul for Currency {
-	type Output = Self;
-
-	fn mul(self, other: Self) -> Self {
-		Self(self.0 * other.0)
-	}
-}
-
-impl Div for Currency {
-	type Output = Self;
-
-	fn div(self, other: Self) -> Self {
-		Self(self.0 / other.0)
 	}
 }
 
