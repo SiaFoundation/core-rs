@@ -11,28 +11,26 @@ use ed25519_dalek::{SigningKey, Signer, VerifyingKey, Verifier};
 pub struct PublicKey([u8;32]);
 
 impl PublicKey {
-	pub fn as_array(&self) -> [u8;32] {
-		self.0
-	}
-
 	pub fn verify_hash(&self, hash: &[u8;32], signature: Signature) -> bool {
 		let pk = VerifyingKey::from_bytes(&self.0).unwrap();
 		pk.verify(hash, &signature.into()).is_ok()
 	}
 }
 
+impl AsRef<[u8]> for PublicKey {
+	fn as_ref(&self) -> &[u8] {
+		&self.0
+	}
+}
+
 /// An ed25519 private key that can be used to sign a hash
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct PrivateKey([u8;64]);
 
 impl PrivateKey {
 	pub fn from_seed(seed: &[u8;32]) -> Self {
 		let sk = SigningKey::from_bytes(seed);
 		PrivateKey(sk.to_keypair_bytes())
-	}
-
-	pub fn as_array(&self) -> [u8;64] {
-		self.0
 	}
 
 	pub fn public_key(&self) -> PublicKey {
@@ -45,9 +43,24 @@ impl PrivateKey {
 	}
 }
 
+impl AsRef<[u8]> for PrivateKey {
+	fn as_ref(&self) -> &[u8] {
+		&self.0
+	}
+}
+
 impl Into<UnlockKey> for PrivateKey {
 	fn into(self) -> UnlockKey {
 		UnlockKey::new(Algorithm::ED25519, self.public_key())
+	}
+}
+
+impl Drop for PrivateKey {
+	fn drop(&mut self) {
+		// Zero out the private key
+		for byte in self.0.iter_mut() {
+			*byte = 0;
+		}
 	}
 }
 
@@ -58,10 +71,6 @@ pub struct Address([u8;32]);
 impl Address {
 	pub fn new(addr: [u8;32]) -> Address {
 		Address(addr)
-	}
-
-	pub fn as_array(&self) -> [u8;32] {
-		self.0
 	}
 
 	pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
@@ -89,6 +98,12 @@ impl Address {
 		}
 
 		Ok(Address(data[..32].try_into().unwrap()))
+	}
+}
+
+impl AsRef<[u8]> for Address {
+	fn as_ref(&self) -> &[u8] {
+		&self.0
 	}
 }
 
@@ -193,7 +208,7 @@ impl SiaEncodable for UnlockKey {
 	fn encode(&self, buf: &mut Vec<u8>) {
 		self.algorithm.encode(buf);
 		buf.extend_from_slice(&(32 as u64).to_le_bytes());
-		buf.extend_from_slice(&self.public_key.as_array());
+		buf.extend_from_slice(self.public_key.as_ref());
 	}
 }
 
