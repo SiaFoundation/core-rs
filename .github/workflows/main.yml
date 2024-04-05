@@ -14,5 +14,7 @@ jobs:
       - name: Setup Environment
         run: |
           rustup update stable
+      - name: Clippy
+        run: cargo clippy -- -D warnings
       - name: Test
         run: cargo test

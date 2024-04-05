@@ -22,7 +22,7 @@ impl SiacoinOutputID {
 	}
 
 	pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-		let s = match s.split_once(":"){
+		let s = match s.split_once(':'){
 			Some((_prefix, suffix)) => suffix,
 			None => s
 		};
@@ -32,7 +32,7 @@ impl SiacoinOutputID {
 		}
 
 		let mut data = [0u8; 32];
-		hex::decode_to_slice(s, &mut data).map_err(|err| HexParseError::HexError(err))?;
+		hex::decode_to_slice(s, &mut data).map_err(HexParseError::HexError)?;
 		Ok(SiacoinOutputID(data))
 	}
 }
@@ -45,7 +45,7 @@ impl SiaEncodable for SiacoinOutputID {
 
 impl fmt::Display for SiacoinOutputID {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		write!(f, "scoid:{}", hex::encode(&self.0))
+		write!(f, "scoid:{}", hex::encode(self.0))
 	}
 }
 
@@ -84,7 +84,7 @@ impl SiafundOutputID {
 	}
 
 	pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-		let s = match s.split_once(":"){
+		let s = match s.split_once(':'){
 			Some((_prefix, suffix)) => suffix,
 			None => s
 		};
@@ -94,14 +94,14 @@ impl SiafundOutputID {
 		}
 
 		let mut data = [0u8; 32];
-		hex::decode_to_slice(s, &mut data).map_err(|err| HexParseError::HexError(err))?;
+		hex::decode_to_slice(s, &mut data).map_err(HexParseError::HexError)?;
 		Ok(SiafundOutputID(data))
 	}
 }
 
 impl fmt::Display for SiafundOutputID {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		write!(f, "sfoid:{}", hex::encode(&self.0))
+		write!(f, "sfoid:{}", hex::encode(self.0))
 	}
 }
 
@@ -150,7 +150,7 @@ impl FileContractID {
 	}
 
 	pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-		let s = match s.split_once(":"){
+		let s = match s.split_once(':'){
 			Some((_prefix, suffix)) => suffix,
 			None => s
 		};
@@ -160,14 +160,14 @@ impl FileContractID {
 		}
 
 		let mut data = [0u8; 32];
-		hex::decode_to_slice(s, &mut data).map_err(|err| HexParseError::HexError(err))?;
+		hex::decode_to_slice(s, &mut data).map_err(HexParseError::HexError)?;
 		Ok(FileContractID(data))
 	}
 }
 
 impl fmt::Display for FileContractID {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		write!(f, "fcid:{}", hex::encode(&self.0))
+		write!(f, "fcid:{}", hex::encode(self.0))
 	}
 }
 
@@ -342,7 +342,7 @@ pub struct TransactionID([u8;32]);
 
 impl TransactionID {
 	pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-		let s = match s.split_once(":"){
+		let s = match s.split_once(':'){
 			Some((_prefix, suffix)) => suffix,
 			None => s
 		};
@@ -352,14 +352,14 @@ impl TransactionID {
 		}
 
 		let mut data = [0u8; 32];
-		hex::decode_to_slice(s, &mut data).map_err(|err| HexParseError::HexError(err))?;
+		hex::decode_to_slice(s, &mut data).map_err(HexParseError::HexError)?;
 		Ok(TransactionID(data))
 	}
 }
 
 impl fmt::Display for TransactionID {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		write!(f, "txn:{}", hex::encode(&self.0))
+		write!(f, "txn:{}", hex::encode(self.0))
 	}
 }
 
@@ -426,7 +426,7 @@ impl Transaction {
 			buf.extend_from_slice(&(data.len() as u64).to_le_bytes());
 			buf.extend_from_slice(data);
 		}
-		return buf;
+		buf
 	}
 	pub fn hash_no_sigs(&self, state: &mut State) {
 		state.update(&(self.siacoin_inputs.len() as u64).to_le_bytes());
@@ -489,7 +489,7 @@ impl Transaction {
 		state.update(&(self.arbitrary_data.len() as u64).to_le_bytes());
 		for data in self.arbitrary_data.iter() {
 			state.update(&(data.len() as u64).to_le_bytes());
-			state.update(&data);
+			state.update(data);
 		}
 	}
 
@@ -604,6 +604,6 @@ mod tests {
 
 		assert_eq!(txn.encode_no_sigs(), [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]);
 		let buf = h.as_bytes();
-		assert_eq!(hex::encode(&buf), "b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24");
+		assert_eq!(hex::encode(buf), "b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24");
 	}
 }

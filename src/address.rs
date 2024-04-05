@@ -49,9 +49,9 @@ impl AsRef<[u8]> for PrivateKey {
 	}
 }
 
-impl Into<UnlockKey> for PrivateKey {
-	fn into(self) -> UnlockKey {
-		UnlockKey::new(Algorithm::ED25519, self.public_key())
+impl From<PrivateKey> for UnlockKey {
+	fn from(val: PrivateKey) -> Self {
+		UnlockKey::new(Algorithm::ED25519, val.public_key())
 	}
 }
 
@@ -74,7 +74,7 @@ impl Address {
 	}
 
 	pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-		let s = match s.split_once(":"){
+		let s = match s.split_once(':'){
 			Some((_prefix, suffix)) => suffix,
 			None => s
 		};
@@ -84,7 +84,7 @@ impl Address {
 		}
 
 		let mut data = [0u8; 38];
-		hex::decode_to_slice(s, &mut data).map_err(|err| HexParseError::HexError(err))?;
+		hex::decode_to_slice(s, &mut data).map_err(HexParseError::HexError)?;
 
 		let h = Params::new()
 			.hash_length(32)
@@ -177,14 +177,14 @@ impl UnlockKey {
 	/// Parses an UnlockKey from a string
 	/// The string should be in the format "algorithm:public_key"
 	pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-		let (prefix, key_str) = s.split_once(":").ok_or(HexParseError::MissingPrefix)?;
+		let (prefix, key_str) = s.split_once(':').ok_or(HexParseError::MissingPrefix)?;
 		let algorithm = match prefix {
 			"ed25519" => Algorithm::ED25519,
 			_ => return Err(HexParseError::InvalidPrefix),
 		};
 		
 		let mut data = [0u8; 32];
-		hex::decode_to_slice(key_str, &mut data).map_err(|err| HexParseError::HexError(err))?;
+		hex::decode_to_slice(key_str, &mut data).map_err(HexParseError::HexError)?;
 		Ok(UnlockKey{
 			algorithm, 
 			public_key: PublicKey(data),
@@ -199,7 +199,7 @@ impl UnlockKey {
 
 impl fmt::Display for UnlockKey {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		write!(f, "{}:{}", self.algorithm, hex::encode(&self.public_key.0))
+		write!(f, "{}:{}", self.algorithm, hex::encode(self.public_key.0))
 	}
 }
 
@@ -207,7 +207,7 @@ impl fmt::Display for UnlockKey {
 impl SiaEncodable for UnlockKey {
 	fn encode(&self, buf: &mut Vec<u8>) {
 		self.algorithm.encode(buf);
-		buf.extend_from_slice(&(32 as u64).to_le_bytes());
+		buf.extend_from_slice(&32_u64.to_le_bytes());
 		buf.extend_from_slice(self.public_key.as_ref());
 	}
 }
@@ -227,7 +227,7 @@ impl SiaEncodable for UnlockConditions {
 		for key in &self.public_keys {
 			key.encode(buf);
 		}
-		buf.extend_from_slice(&(self.required_signatures as u64).to_le_bytes());
+		buf.extend_from_slice(&self.required_signatures.to_le_bytes());
 	}
 }
 

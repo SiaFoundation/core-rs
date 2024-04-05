@@ -23,9 +23,9 @@ impl Accumulator {
 
 	pub fn add_leaf(&mut self, h: &[u8;32]) {
 		let mut i = 0;
-		let mut node = h.clone();
+		let mut node = *h;
 		while self.has_tree_at_height(i) {
-			node = sum_node(&self.trees[i], &h);
+			node = sum_node(&self.trees[i], h);
 			i += 1;
 		}
 		self.trees[i] = node;
