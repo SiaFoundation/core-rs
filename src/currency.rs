@@ -1,5 +1,5 @@
+use core::ops::{Add, Sub, Mul, Div, Deref, DerefMut};
 use core::num::ParseIntError;
-use std::ops::{Deref, DerefMut};
 
 use crate::SiaEncodable;
 
@@ -117,6 +117,38 @@ impl Currency {
 	pub fn checked_div(self, other: Currency) -> Option<Self> {
 		let v = self.0.checked_div(other.0)?;
 		Some(Currency(v))
+	}
+}
+
+impl Add for Currency {
+	type Output = Self;
+
+	fn add(self, other: Self) -> Self {
+		Self(self.0 + other.0)
+	}
+}
+
+impl Sub for Currency {
+	type Output = Self;
+
+	fn sub(self, other: Self) -> Self {
+		Self(self.0 - other.0)
+	}
+}
+
+impl Mul for Currency {
+	type Output = Self;
+
+	fn mul(self, other: Self) -> Self {
+		Self(self.0 * other.0)
+	}
+}
+
+impl Div for Currency {
+	type Output = Self;
+
+	fn div(self, other: Self) -> Self {
+		Self(self.0 / other.0)
 	}
 }
 
