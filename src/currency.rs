@@ -40,7 +40,7 @@ impl Currency {
 	}
 
 	pub fn parse_string(s: &str) -> Result<Self, CurrencyParseError> {
-		let i = s.find(|c: char| !c.is_digit(10) && c != '.').unwrap_or(s.len());
+		let i = s.find(|c: char| !c.is_ascii_digit() && c != '.').unwrap_or(s.len());
 		let (value, unit) = s.split_at(i);
 		let value = value.trim();
 		let unit = unit.trim();

@@ -44,7 +44,7 @@ impl Hash256 {
 	}
 
 	pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-		let s = match s.split_once(":"){
+		let s = match s.split_once(':'){
 			Some((_prefix, suffix)) => suffix,
 			None => s
 		};
@@ -54,14 +54,14 @@ impl Hash256 {
 		}
 
 		let mut data = [0u8; 32];
-		hex::decode_to_slice(s, &mut data).map_err(|err| HexParseError::HexError(err))?;
+		hex::decode_to_slice(s, &mut data).map_err(HexParseError::HexError)?;
 		Ok(Hash256(data))
 	}
 }
 
 impl fmt::Display for Hash256 {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		write!(f, "h:{}", hex::encode(&self.0))
+		write!(f, "h:{}", hex::encode(self.0))
 	}
 }
 

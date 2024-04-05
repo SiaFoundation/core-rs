@@ -32,19 +32,19 @@ impl Signature {
 	}
 
 	pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-		let s = match s.split_once(":"){
+		let s = match s.split_once(':'){
 			Some((_prefix, suffix)) => suffix,
 			None => s
 		};
 
-		let data = hex::decode(s).map_err(|e| HexParseError::HexError(e))?;
+		let data = hex::decode(s).map_err(HexParseError::HexError)?;
 		Ok(Signature(data))
 	}
 }
 
-impl Into<ed25519_dalek::Signature> for Signature {
-	fn into(self) -> ed25519_dalek::Signature {
-		ed25519_dalek::Signature::from_bytes(self.0.as_slice().try_into().unwrap())
+impl From<Signature> for ed25519_dalek::Signature {
+	fn from(val: Signature) -> Self {
+		ed25519_dalek::Signature::from_bytes(val.0.as_slice().try_into().unwrap())
 	}
 
 }
@@ -78,7 +78,7 @@ impl SigningState {
 		} else if self.index.height >= self.hardforks.asic_height {
 			return &[0]
 		}
-		return &[]
+		&[]
 	}
 
 	pub fn with_index(self, index: ChainIndex) -> Self {
@@ -155,7 +155,7 @@ impl SigningState {
 		state.update(&(txn.arbitrary_data.len() as u64).to_le_bytes());
 		for data in txn.arbitrary_data.iter() {
 			state.update(&(data.len() as u64).to_le_bytes());
-			state.update(&data);
+			state.update(data);
 		}
 
 		state.update(parent_id);
