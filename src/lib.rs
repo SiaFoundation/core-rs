@@ -7,6 +7,7 @@ pub trait SiaEncodable {
 pub mod address;
 pub mod consensus;
 pub mod currency;
+pub mod encoding;
 pub mod seed;
 pub mod signing;
 pub mod transactions;
