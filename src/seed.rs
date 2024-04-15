@@ -1,68 +1,72 @@
-use bip39::{Mnemonic, Language, Error as MnemonicError};
-use blake2b_simd::Params as Blake2bParams;
 use crate::PrivateKey;
+use bip39::{Error as MnemonicError, Language, Mnemonic};
+use blake2b_simd::Params as Blake2bParams;
 
-pub struct Seed([u8;16]);
+pub struct Seed([u8; 16]);
 
 #[derive(Debug, PartialEq)]
 pub enum SeedError {
-	MnemonicError,
-	InvalidLength
+    MnemonicError,
+    InvalidLength,
 }
 
 impl From<MnemonicError> for SeedError {
-	fn from(_: MnemonicError) -> Self {
-		SeedError::MnemonicError
-	}
+    fn from(_: MnemonicError) -> Self {
+        SeedError::MnemonicError
+    }
 }
 
 impl Seed {
-	pub fn from_entropy(data: [u8;16]) -> Self {
-		Self(data)
-	}
+    pub fn from_entropy(data: [u8; 16]) -> Self {
+        Self(data)
+    }
 
-	pub fn from_mnemonic(s: &str) -> Result<Self, SeedError> {
-		let m = Mnemonic::parse_in(Language::English, s)?;
-		if m.to_entropy().len() != 16 {
-			return Err(SeedError::InvalidLength);
-		}
-		Ok(Self(m.to_entropy().as_slice().try_into().unwrap()))
-	}
+    pub fn from_mnemonic(s: &str) -> Result<Self, SeedError> {
+        let m = Mnemonic::parse_in(Language::English, s)?;
+        if m.to_entropy().len() != 16 {
+            return Err(SeedError::InvalidLength);
+        }
+        Ok(Self(m.to_entropy().as_slice().try_into().unwrap()))
+    }
 
-	pub fn to_mnemonic(&self) -> String {
-		Mnemonic::from_entropy_in(Language::English, &self.0).unwrap().to_string()
-	}
+    pub fn to_mnemonic(&self) -> String {
+        Mnemonic::from_entropy_in(Language::English, &self.0)
+            .unwrap()
+            .to_string()
+    }
 
-	pub fn private_key(&self, index : u64) -> PrivateKey {
-		let seed: [u8;32] = Blake2bParams::new()
-			.hash_length(32)
-			.to_state()
-			.update(&self.0)
-			.finalize()
-			.as_ref()
-			.try_into()
-			.unwrap();
+    pub fn private_key(&self, index: u64) -> PrivateKey {
+        let seed: [u8; 32] = Blake2bParams::new()
+            .hash_length(32)
+            .to_state()
+            .update(&self.0)
+            .finalize()
+            .as_ref()
+            .try_into()
+            .unwrap();
 
-		PrivateKey::from_seed(Blake2bParams::new()
-			.hash_length(32)
-			.to_state()
-			.update(&seed)
-			.update(&index.to_le_bytes())
-			.finalize()
-			.as_ref()
-			.try_into()
-			.unwrap())
-	}
+        PrivateKey::from_seed(
+            Blake2bParams::new()
+                .hash_length(32)
+                .to_state()
+                .update(&seed)
+                .update(&index.to_le_bytes())
+                .finalize()
+                .as_ref()
+                .try_into()
+                .unwrap(),
+        )
+    }
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::{Address,UnlockConditions};
+    use super::*;
+    use crate::{Address, UnlockConditions};
 
-	#[test]
-	fn test_seed_from_entropy() {
-		let test_cases = vec![
+    #[test]
+    fn test_seed_from_entropy() {
+        let test_cases = vec![
 			([23,154,249,239,129,81,216,147,144,163,207,136,238,88,11,253],"bleak style know actor budget endorse dream ketchup material index actual wide"),
 			([125,190,141,81,70,235,204,217,162,19,65,96,237,125,157,255],"laundry virtual february miss rubber holiday marriage habit genius hip guess yard"),
 			([56,47,30,87,122,143,19,221,189,249,105,45,161,38,172,91],"deal jump noise vital van uphold wave coffee color ankle prison repeat"),
@@ -89,16 +93,17 @@ mod tests {
 			([204,38,228,251,95,106,131,62,103,254,162,86,97,48,254,222],"slow damp disagree salute popular palace paper stairs filter another distance sadness"),
 		];
 
-		for (entropy, expected) in test_cases {
-			let seed = Seed::from_entropy(entropy);
-			assert_eq!(seed.to_mnemonic(), expected);
-		}
-	}
+        for (entropy, expected) in test_cases {
+            let seed = Seed::from_entropy(entropy);
+            assert_eq!(seed.to_mnemonic(), expected);
+        }
+    }
 
-	#[test]
-	fn test_seed_private_key() {
-		const PHRASE: &str = "wealth salon venue abstract blossom hollow south over accuse bunker guide saddle";
-		let test_addresses = vec![
+    #[test]
+    fn test_seed_private_key() {
+        const PHRASE: &str =
+            "wealth salon venue abstract blossom hollow south over accuse bunker guide saddle";
+        let test_addresses = vec![
 			(0, hex::decode("e313a1aa2dbe411b5335ced5592e87cb002f47a874e27e9cb90eab285c675e366d29b52b7b312fb5e4f657afd0105d3d6dcc5c326131a033597501d25612789f").unwrap()),
 			(1, hex::decode("0a909bf1d36c876cb776b81e19c8b4a1351c644e329db3be07f6dfce59b75f4d3fa53cfea6763b07cc4202a0ba36574d99fa6ca3f807dbff2f2266c4d0a0a76d").unwrap()),
 			(2, hex::decode("866b40a6ee117ab8e65ee0772ca4e463e98edbf0793beae08a784745e7f10554294324450371bb263bc02c4536a04afa355ca490ef6481fd682dfd44bdb0f464").unwrap()),
@@ -114,17 +119,18 @@ mod tests {
 			(18446744073709551615, hex::decode("c03b2570cb69e300cd4ccbe0c4d8ee7b8ccfad7383f10aa2df52a4a9d05ab843d39fbd56458e94d711061748a051d434d2200e1af71df56070d2df0883453b2c").unwrap()),
 		];
 
-		let seed = Seed::from_mnemonic(PHRASE).unwrap();
-		for (i, expected) in test_addresses {
-			let pk = seed.private_key(i);
-			assert_eq!(pk.as_ref(), expected, "index {}", i);
-		}
-	}
-	
-	#[test]
-	fn test_seed_public_key() {
-		const PHRASE: &str = "wealth salon venue abstract blossom hollow south over accuse bunker guide saddle";
-		let test_addresses = vec![
+        let seed = Seed::from_mnemonic(PHRASE).unwrap();
+        for (i, expected) in test_addresses {
+            let pk = seed.private_key(i);
+            assert_eq!(pk.as_ref(), expected, "index {}", i);
+        }
+    }
+
+    #[test]
+    fn test_seed_public_key() {
+        const PHRASE: &str =
+            "wealth salon venue abstract blossom hollow south over accuse bunker guide saddle";
+        let test_addresses = vec![
 			(0, hex::decode("e313a1aa2dbe411b5335ced5592e87cb002f47a874e27e9cb90eab285c675e366d29b52b7b312fb5e4f657afd0105d3d6dcc5c326131a033597501d25612789f").unwrap()),
 			(1, hex::decode("0a909bf1d36c876cb776b81e19c8b4a1351c644e329db3be07f6dfce59b75f4d3fa53cfea6763b07cc4202a0ba36574d99fa6ca3f807dbff2f2266c4d0a0a76d").unwrap()),
 			(2, hex::decode("866b40a6ee117ab8e65ee0772ca4e463e98edbf0793beae08a784745e7f10554294324450371bb263bc02c4536a04afa355ca490ef6481fd682dfd44bdb0f464").unwrap()),
@@ -140,17 +146,18 @@ mod tests {
 			(18446744073709551615, hex::decode("c03b2570cb69e300cd4ccbe0c4d8ee7b8ccfad7383f10aa2df52a4a9d05ab843d39fbd56458e94d711061748a051d434d2200e1af71df56070d2df0883453b2c").unwrap()),
 		];
 
-		let seed = Seed::from_mnemonic(PHRASE).unwrap();
-		for (i, expected) in test_addresses {
-			let pk = seed.private_key(i).public_key();
-			assert_eq!(pk.as_ref(), expected[32..].as_ref(), "index {}", i);
-		}
-	}
+        let seed = Seed::from_mnemonic(PHRASE).unwrap();
+        for (i, expected) in test_addresses {
+            let pk = seed.private_key(i).public_key();
+            assert_eq!(pk.as_ref(), expected[32..].as_ref(), "index {}", i);
+        }
+    }
 
-	#[test]
-	fn test_seed_standard_address() {
-		const PHRASE: &str = "song renew capable taxi follow sword more hybrid laptop dance unfair poem";
-		let test_addresses = vec![
+    #[test]
+    fn test_seed_standard_address() {
+        const PHRASE: &str =
+            "song renew capable taxi follow sword more hybrid laptop dance unfair poem";
+        let test_addresses = vec![
 			(0, Address::parse_string("addr:16e09f8dc8a100a03ba1f9503e4035661738d1bea0b6cdc9bb012d3cd25edaacfd780909e550").unwrap()),
 			(1, Address::parse_string("addr:cb016a7018485325fa299bc247113e3792dbea27ee08d2bb57a16cb0804fa449d3a91ee647a1").unwrap()),
 			(2, Address::parse_string("addr:5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34").unwrap()),
@@ -166,12 +173,12 @@ mod tests {
 			(18446744073709551615, Address::parse_string("addr:832d0e8b5f967677d812d75559c373d930ad16eb90c31c29982a190bb7db9edf9438fd827938").unwrap()),
 		];
 
-		let seed = Seed::from_mnemonic(PHRASE).unwrap();
-		for (i, expected) in test_addresses {
-			let pk = seed.private_key(i).public_key();
-			let addr = UnlockConditions::standard_unlock_conditions(pk).address();
+        let seed = Seed::from_mnemonic(PHRASE).unwrap();
+        for (i, expected) in test_addresses {
+            let pk = seed.private_key(i).public_key();
+            let addr = UnlockConditions::standard_unlock_conditions(pk).address();
 
-			assert_eq!(addr, expected, "index {}", i);
-		}
-	}
+            assert_eq!(addr, expected, "index {}", i);
+        }
+    }
 }
