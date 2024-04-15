@@ -148,7 +148,7 @@ impl<W: io::Write> ser::Serializer for &mut Serializer<'_, W> {
 
     // 'none' is serialized as a '0' byte
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
-        self.writer.write_all(&[1; 0])?;
+        self.writer.write_all(&[0])?;
         Ok(())
     }
 
@@ -157,7 +157,7 @@ impl<W: io::Write> ser::Serializer for &mut Serializer<'_, W> {
     where
         T: Serialize,
     {
-        self.writer.write_all(&[1; 1])?;
+        self.writer.write_all(&[1])?;
         value.serialize(self)
     }
 
@@ -452,7 +452,8 @@ mod tests {
             string: String,
             var_bytes: Vec<u8>,   // dynamic size slice
             fixed_bytes: [u8; 3], // fixed size array
-            some: Option<bool>,
+            some_true: Option<bool>,
+            some_false: Option<bool>,
             none: Option<bool>,
             unit: UnitStruct,
             new_type: NewTypeStruct,
@@ -474,21 +475,40 @@ mod tests {
             float64: 1.5,
             character8: 'a',
             character16: '❤',
-            string: "some test string".to_string(),
+            string: "foo".to_string(),
             var_bytes: vec![1, 2, 3],
             fixed_bytes: [1, 2, 3],
-            some: Some(true),
+            some_true: Some(true),
+            some_false: Some(false),
             none: None,
             unit: UnitStruct {},
             new_type: NewTypeStruct(true),
             tuple: (false, true),
         };
         let expected = [
-            1, 0, 252, 253, 255, 254, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 1, 2,
-            0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 63, 0, 0, 0, 0, 0, 0, 248, 63, 1, 0,
-            0, 0, 0, 0, 0, 0, 97, 3, 0, 0, 0, 0, 0, 0, 0, 226, 157, 164, 16, 0, 0, 0, 0, 0, 0, 0,
-            115, 111, 109, 101, 32, 116, 101, 115, 116, 32, 115, 116, 114, 105, 110, 103, 3, 0, 0,
-            0, 0, 0, 0, 0, 1, 2, 3, 1, 2, 3, 1, 1, 1, 0, 1,
+            1,   // true
+            0,   // false
+            252, // -4
+            253, 255, // -3
+            254, 255, 255, 255, // -2
+            255, 255, 255, 255, 255, 255, 255, 255, // -1
+            1,   // 1
+            2, 0, // 2
+            3, 0, 0, 0, // 3
+            4, 0, 0, 0, 0, 0, 0, 0, // 4
+            0, 0, 64, 63, // 0.75
+            0, 0, 0, 0, 0, 0, 248, 63, // 1.5
+            1, 0, 0, 0, 0, 0, 0, 0, // 'a'
+            97, 3, 0, 0, 0, 0, 0, 0, 0, 226, 157, 164, // '❤'
+            3, 0, 0, 0, 0, 0, 0, 0, 102, 111, 111, // "foo"
+            3, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, // var_bytes prefix + [1, 2, 3]
+            1, 2, 3, // fixed_bytes [1, 2, 3]
+            1, 1, // Some(true)
+            1, 0, // Some(false)
+            0, // None
+            // UnitStruct
+            1, // NewTypeStrucdt(true)
+            0, 1, // (false, true)
         ];
         assert_eq!(to_bytes(&test).unwrap(), expected);
     }
