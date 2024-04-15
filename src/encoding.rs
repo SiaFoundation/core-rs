@@ -422,20 +422,74 @@ impl<'a, W: io::Write> ser::SerializeStructVariant for &'a mut Serializer<'_, W>
     }
 }
 
-#[test]
-fn test_struct() {
-    #[derive(Serialize)]
-    struct Test {
-        int: u32,
-        seq: Vec<u8>, // dynamic size slice
-        arr: [u8; 3], // fixed size array
-    }
+mod tests {
+    use super::*;
+    use serde::Serialize;
 
-    let test = Test {
-        int: 1,
-        seq: vec![1, 2, 3],
-        arr: [1, 2, 3],
-    };
-    let expected = [1, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 1, 2, 3];
-    assert_eq!(to_bytes(&test).unwrap(), expected);
+    #[test]
+    fn test_struct() {
+        #[derive(Serialize)]
+        struct UnitStruct;
+        #[derive(Serialize)]
+        struct NewTypeStruct(bool);
+
+        #[derive(Serialize)]
+        struct Test {
+            b_true: bool,
+            b_false: bool,
+            signed8: i8,
+            signed16: i16,
+            signed32: i32,
+            signed64: i64,
+            unsigned8: u8,
+            unsigned16: u16,
+            unsigned32: u32,
+            unsigned64: u64,
+            float32: f32,
+            float64: f64,
+            character8: char,
+            character16: char,
+            string: String,
+            var_bytes: Vec<u8>,   // dynamic size slice
+            fixed_bytes: [u8; 3], // fixed size array
+            some: Option<bool>,
+            none: Option<bool>,
+            unit: UnitStruct,
+            new_type: NewTypeStruct,
+            tuple: (bool, bool),
+        }
+
+        let test = Test {
+            b_true: true,
+            b_false: false,
+            signed8: -4,
+            signed16: -3,
+            signed32: -2,
+            signed64: -1,
+            unsigned8: 1,
+            unsigned16: 2,
+            unsigned32: 3,
+            unsigned64: 4,
+            float32: 0.75,
+            float64: 1.5,
+            character8: 'a',
+            character16: '❤',
+            string: "some test string".to_string(),
+            var_bytes: vec![1, 2, 3],
+            fixed_bytes: [1, 2, 3],
+            some: Some(true),
+            none: None,
+            unit: UnitStruct {},
+            new_type: NewTypeStruct(true),
+            tuple: (false, true),
+        };
+        let expected = [
+            1, 0, 252, 253, 255, 254, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 1, 2,
+            0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 63, 0, 0, 0, 0, 0, 0, 248, 63, 1, 0,
+            0, 0, 0, 0, 0, 0, 97, 3, 0, 0, 0, 0, 0, 0, 0, 226, 157, 164, 16, 0, 0, 0, 0, 0, 0, 0,
+            115, 111, 109, 101, 32, 116, 101, 115, 116, 32, 115, 116, 114, 105, 110, 103, 3, 0, 0,
+            0, 0, 0, 0, 0, 1, 2, 3, 1, 2, 3, 1, 1, 1, 0, 1,
+        ];
+        assert_eq!(to_bytes(&test).unwrap(), expected);
+    }
 }
