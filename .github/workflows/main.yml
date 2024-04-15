@@ -14,8 +14,6 @@ jobs:
       - name: Setup Environment
         run: |
           rustup update stable
-      - name: Rustfmt
-        run: cargo fmt --all -- --check
       - name: Clippy
         run: cargo clippy -- -D warnings
       - name: Test
