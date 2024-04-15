@@ -46,7 +46,7 @@ where
     T: Serialize,
     W: io::Write,
 {
-    let mut serializer = Serializer { writer: writer };
+    let mut serializer = Serializer { writer };
     value.serialize(&mut serializer)
 }
 
@@ -422,6 +422,7 @@ impl<'a, W: io::Write> ser::SerializeStructVariant for &'a mut Serializer<'_, W>
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
     use serde::Serialize;
