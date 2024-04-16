@@ -77,28 +77,24 @@ impl<W: io::Write> ser::Serializer for &mut Serializer<'_, W> {
     type SerializeStructVariant = Self;
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
-        self.writer.write_u8(if v { 1 } else { 0 })?;
+        self.writer.write_all(if v { &[1] } else { &[0] })?;
         Ok(())
     }
 
-    fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
-        self.writer.write_i8(v)?;
-        Ok(())
+    fn serialize_i8(self, _v: i8) -> Result<Self::Ok, Self::Error> {
+        Err(Error::UnsupportedType("i8"))
     }
 
-    fn serialize_i16(self, v: i16) -> Result<Self::Ok, Self::Error> {
-        self.writer.write_i16::<LittleEndian>(v)?;
-        Ok(())
+    fn serialize_i16(self, _v: i16) -> Result<Self::Ok, Self::Error> {
+        Err(Error::UnsupportedType("i16"))
     }
 
-    fn serialize_i32(self, v: i32) -> Result<Self::Ok, Self::Error> {
-        self.writer.write_i32::<LittleEndian>(v)?;
-        Ok(())
+    fn serialize_i32(self, _v: i32) -> Result<Self::Ok, Self::Error> {
+        Err(Error::UnsupportedType("i32"))
     }
 
-    fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
-        self.writer.write_i64::<LittleEndian>(v)?;
-        Ok(())
+    fn serialize_i64(self, _v: i64) -> Result<Self::Ok, Self::Error> {
+        Err(Error::UnsupportedType("i64"))
     }
 
     fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
@@ -107,13 +103,11 @@ impl<W: io::Write> ser::Serializer for &mut Serializer<'_, W> {
     }
 
     fn serialize_u16(self, v: u16) -> Result<Self::Ok, Self::Error> {
-        self.writer.write_u16::<LittleEndian>(v)?;
-        Ok(())
+        self.serialize_u64(v as u64)
     }
 
     fn serialize_u32(self, v: u32) -> Result<Self::Ok, Self::Error> {
-        self.writer.write_u32::<LittleEndian>(v)?;
-        Ok(())
+        self.serialize_u64(v as u64)
     }
 
     fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
@@ -121,14 +115,12 @@ impl<W: io::Write> ser::Serializer for &mut Serializer<'_, W> {
         Ok(())
     }
 
-    fn serialize_f32(self, v: f32) -> Result<Self::Ok, Self::Error> {
-        self.writer.write_f32::<LittleEndian>(v)?;
-        Ok(())
+    fn serialize_f32(self, _v: f32) -> Result<Self::Ok, Self::Error> {
+        Err(Error::UnsupportedType("f32"))
     }
 
-    fn serialize_f64(self, v: f64) -> Result<Self::Ok, Self::Error> {
-        self.writer.write_f64::<LittleEndian>(v)?;
-        Ok(())
+    fn serialize_f64(self, _v: f64) -> Result<Self::Ok, Self::Error> {
+        Err(Error::UnsupportedType("f64"))
     }
 
     fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
@@ -438,16 +430,10 @@ mod tests {
         struct Test {
             b_true: bool,
             b_false: bool,
-            signed8: i8,
-            signed16: i16,
-            signed32: i32,
-            signed64: i64,
             unsigned8: u8,
             unsigned16: u16,
             unsigned32: u32,
             unsigned64: u64,
-            float32: f32,
-            float64: f64,
             character8: char,
             character16: char,
             string: String,
@@ -464,16 +450,10 @@ mod tests {
         let test = Test {
             b_true: true,
             b_false: false,
-            signed8: -4,
-            signed16: -3,
-            signed32: -2,
-            signed64: -1,
             unsigned8: 1,
             unsigned16: 2,
             unsigned32: 3,
             unsigned64: 4,
-            float32: 0.75,
-            float64: 1.5,
             character8: 'a',
             character16: '❤',
             string: "foo".to_string(),
@@ -487,18 +467,12 @@ mod tests {
             tuple: (false, true),
         };
         let expected = [
-            1,   // true
-            0,   // false
-            252, // -4
-            253, 255, // -3
-            254, 255, 255, 255, // -2
-            255, 255, 255, 255, 255, 255, 255, 255, // -1
-            1,   // 1
-            2, 0, // 2
-            3, 0, 0, 0, // 3
+            1, // true
+            0, // false
+            1, // 1
+            2, 0, 0, 0, 0, 0, 0, 0, // 2
+            3, 0, 0, 0, 0, 0, 0, 0, // 3
             4, 0, 0, 0, 0, 0, 0, 0, // 4
-            0, 0, 64, 63, // 0.75
-            0, 0, 0, 0, 0, 0, 248, 63, // 1.5
             1, 0, 0, 0, 0, 0, 0, 0, // 'a'
             97, 3, 0, 0, 0, 0, 0, 0, 0, 226, 157, 164, // '❤'
             3, 0, 0, 0, 0, 0, 0, 0, 102, 111, 111, // "foo"
