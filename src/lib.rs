@@ -10,6 +10,7 @@ pub mod currency;
 pub mod encoding;
 pub mod seed;
 pub mod signing;
+pub mod specifier;
 pub mod transactions;
 
 pub(crate) mod blake2b;

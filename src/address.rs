@@ -2,9 +2,12 @@ use core::fmt;
 
 use crate::blake2b::Accumulator;
 use crate::blake2b::LEAF_HASH_PREFIX;
+use crate::encoding;
+use crate::specifier::Specifier;
 use crate::{HexParseError, SiaEncodable, Signature};
 use blake2b_simd::Params;
 use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
+use serde::Serialize;
 
 /// An ed25519 public key that can be used to verify a signature
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -65,7 +68,7 @@ impl Drop for PrivateKey {
 }
 
 /// An address that can be used to receive UTXOs
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, Serialize)]
 pub struct Address([u8; 32]);
 
 impl Address {
@@ -125,7 +128,7 @@ impl fmt::Display for Address {
 
 impl SiaEncodable for Address {
     fn encode(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(&self.0);
+        buf.extend_from_slice(&encoding::to_bytes(&self).unwrap());
     }
 }
 
@@ -142,16 +145,22 @@ impl fmt::Display for Algorithm {
     }
 }
 
+impl Serialize for Algorithm {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let spec: Specifier;
+        match self {
+            Algorithm::ED25519 => spec = Specifier::from("ed25519"),
+        };
+        spec.serialize(serializer)
+    }
+}
+
 impl SiaEncodable for Algorithm {
     fn encode(&self, buf: &mut Vec<u8>) {
-        let mut spec = [0u8; 16];
-        let str = match self {
-            Algorithm::ED25519 => "ed25519",
-        };
-        for (i, &byte) in str.as_bytes().iter().enumerate().take(16) {
-            spec[i] = byte;
-        }
-        buf.extend_from_slice(&spec)
+        buf.extend_from_slice(&encoding::to_bytes(&self).unwrap());
     }
 }
 
@@ -297,6 +306,16 @@ impl UnlockConditions {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_serialize_algorithm() {
+        let algorithm = Algorithm::ED25519;
+        let bytes = encoding::to_bytes(&algorithm).unwrap();
+        let expected: [u8; 16] = [
+            b'e', b'd', b'2', b'5', b'5', b'1', b'9', 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        assert_eq!(bytes, expected);
+    }
 
     #[test]
     fn test_standard_unlockhash() {
