@@ -126,12 +126,6 @@ impl fmt::Display for Address {
     }
 }
 
-impl SiaEncodable for Address {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(&encoding::to_bytes(&self).unwrap());
-    }
-}
-
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Algorithm {
     ED25519,
@@ -150,17 +144,10 @@ impl Serialize for Algorithm {
     where
         S: serde::Serializer,
     {
-        
         let spec: Specifier = match self {
             Algorithm::ED25519 => Specifier::from("ed25519"),
         };
         spec.serialize(serializer)
-    }
-}
-
-impl SiaEncodable for Algorithm {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(&encoding::to_bytes(&self).unwrap());
     }
 }
 
@@ -214,7 +201,7 @@ impl fmt::Display for UnlockKey {
 
 impl SiaEncodable for UnlockKey {
     fn encode(&self, buf: &mut Vec<u8>) {
-        self.algorithm.encode(buf);
+        encoding::to_writer(buf, &self.algorithm).unwrap();
         buf.extend_from_slice(&32_u64.to_le_bytes());
         buf.extend_from_slice(self.public_key.as_ref());
     }

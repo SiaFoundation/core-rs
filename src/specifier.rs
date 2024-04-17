@@ -5,14 +5,15 @@ const SPECIFIER_SIZE: usize = 16;
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Specifier([u8; SPECIFIER_SIZE]);
 
+// implement the `From` trait for the `Specifier` struct to allow for creating a
+// Specifier from any type that can be converted to a slice of bytes such as
+// 'String', '&str' or byte arrays.
 impl<T: AsRef<[u8]>> From<T> for Specifier {
     fn from(src: T) -> Self {
         let src = src.as_ref();
         assert!(src.len() <= SPECIFIER_SIZE, "specifier too long");
         let mut spec = Specifier([0; SPECIFIER_SIZE]);
-        for (src, dst) in src.iter().zip(spec.0.iter_mut()) {
-            *dst = *src;
-        }
+        spec.0[..src.len()].copy_from_slice(src);
         spec
     }
 }
