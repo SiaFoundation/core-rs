@@ -150,9 +150,9 @@ impl Serialize for Algorithm {
     where
         S: serde::Serializer,
     {
-        let spec: Specifier;
-        match self {
-            Algorithm::ED25519 => spec = Specifier::from("ed25519"),
+        
+        let spec: Specifier = match self {
+            Algorithm::ED25519 => Specifier::from("ed25519"),
         };
         spec.serialize(serializer)
     }

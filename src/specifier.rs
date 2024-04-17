@@ -10,8 +10,8 @@ impl<T: AsRef<[u8]>> From<T> for Specifier {
         let src = src.as_ref();
         assert!(src.len() <= SPECIFIER_SIZE, "specifier too long");
         let mut spec = Specifier([0; SPECIFIER_SIZE]);
-        for (srcI, dstI) in src.iter().zip(spec.0.iter_mut()) {
-            *dstI = *srcI;
+        for (src, dst) in src.iter().zip(spec.0.iter_mut()) {
+            *dst = *src;
         }
         spec
     }
@@ -24,7 +24,7 @@ mod tests {
     #[test]
     fn test_specifier() {
         let spec = Specifier::from("hello");
-        let mut expected = Specifier([
+        let expected = Specifier([
             b'h', b'e', b'l', b'l', b'o', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ]);
         assert_eq!(spec, expected);
