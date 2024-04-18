@@ -5,19 +5,29 @@ use std::{
     io::{Error as IOError, Write},
     time::{self, SystemTime},
 };
+use thiserror::Error;
 
 use crate::{Address, Hash256, PublicKey, SiaEncodable, Signature, SigningState, UnlockConditions};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Error)]
 pub enum ValidationError {
+    #[error("opaque policy")]
     OpaquePolicy,
+    #[error("invalid policy")]
     InvalidPolicy,
+    #[error("invalid signature")]
     InvalidSignature,
+    #[error("invalid preimage")]
     InvalidPreimage,
+    #[error("invalid height")]
     InvalidHeight,
+    #[error("invalid timestamp")]
     InvalidTimestamp,
+    #[error("missing signature")]
     MissingSignature,
+    #[error("missing preimage")]
     MissingPreimage,
+    #[error("threshold not met")]
     ThresholdNotMet,
 }
 
