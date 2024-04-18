@@ -1,12 +1,13 @@
 use core::fmt;
+use std::io::{Error, Write};
 
 use crate::blake2b::Accumulator;
 use crate::blake2b::LEAF_HASH_PREFIX;
-use crate::encoding;
+use crate::encoding::to_writer;
 use crate::specifier::Specifier;
 use crate::{HexParseError, SiaEncodable, Signature};
 use blake2b_simd::Params;
-use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature as ED25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::Serialize;
 
 /// An ed25519 public key that can be used to verify a signature
@@ -14,9 +15,14 @@ use serde::Serialize;
 pub struct PublicKey([u8; 32]);
 
 impl PublicKey {
-    pub fn verify_hash(&self, hash: &[u8; 32], signature: Signature) -> bool {
+    pub fn new(buf: [u8; 32]) -> Self {
+        PublicKey(buf)
+    }
+
+    pub fn verify(&self, msg: &[u8], signature: &Signature) -> bool {
         let pk = VerifyingKey::from_bytes(&self.0).unwrap();
-        pk.verify(hash, &signature.into()).is_ok()
+        pk.verify(msg, &ED25519Signature::from_bytes(signature.as_ref()))
+            .is_ok()
     }
 }
 
@@ -37,12 +43,20 @@ impl PrivateKey {
     }
 
     pub fn public_key(&self) -> PublicKey {
-        PublicKey(self.0[32..].try_into().unwrap())
+        let mut buf = [0u8; 32];
+        buf.copy_from_slice(&self.0[32..]);
+        PublicKey::new(buf)
     }
 
     pub fn sign_hash(&self, hash: &[u8; 32]) -> Signature {
         let sk = SigningKey::from_bytes(&self.0[..32].try_into().unwrap());
-        Signature::new(sk.sign(hash).to_vec())
+        Signature::new(sk.sign(hash).to_bytes())
+    }
+}
+
+impl AsRef<[u8; 64]> for PrivateKey {
+    fn as_ref(&self) -> &[u8; 64] {
+        &self.0
     }
 }
 
@@ -113,13 +127,21 @@ impl Address {
             return Err(HexParseError::InvalidChecksum);
         }
 
-        Ok(Address(data[..32].try_into().unwrap()))
+        Ok(data[..32].into())
     }
 }
 
 impl AsRef<[u8]> for Address {
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+impl From<&[u8]> for Address {
+    fn from(val: &[u8]) -> Self {
+        let mut data = [0u8; 32];
+        data.copy_from_slice(val);
+        Address(data)
     }
 }
 
@@ -217,10 +239,10 @@ impl fmt::Display for UnlockKey {
 }
 
 impl SiaEncodable for UnlockKey {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        encoding::to_writer(buf, &self.algorithm).unwrap();
-        buf.extend_from_slice(&32_u64.to_le_bytes());
-        buf.extend_from_slice(self.public_key.as_ref());
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        to_writer(w, &self.algorithm).unwrap(); // TODO: remove
+        w.write_all(&32_u64.to_le_bytes())?;
+        w.write_all(&self.public_key.0)
     }
 }
 
@@ -233,13 +255,13 @@ pub struct UnlockConditions {
 }
 
 impl SiaEncodable for UnlockConditions {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(&self.timelock.to_le_bytes());
-        buf.extend_from_slice(&(self.public_keys.len() as u64).to_le_bytes());
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        w.write_all(&self.timelock.to_le_bytes())?;
+        w.write_all(&(self.public_keys.len() as u64).to_le_bytes())?;
         for key in &self.public_keys {
-            key.encode(buf);
+            key.encode(w)?;
         }
-        buf.extend_from_slice(&self.required_signatures.to_le_bytes());
+        w.write_all(&self.required_signatures.to_le_bytes())
     }
 }
 
@@ -277,21 +299,19 @@ impl UnlockConditions {
             .update(&self.timelock.to_le_bytes())
             .finalize();
 
-        let res = h.as_bytes().try_into().unwrap();
-        acc.add_leaf(&res);
+        let mut leaf = [0u8; 32];
+        leaf.copy_from_slice(h.as_bytes());
+        acc.add_leaf(&leaf);
 
-        let mut buf: Vec<u8> = Vec::new();
         for key in &self.public_keys {
-            buf.clear();
-            key.encode(&mut buf);
-            let h = Params::new()
-                .hash_length(32)
-                .to_state()
-                .update(LEAF_HASH_PREFIX)
-                .update(buf.as_slice())
-                .finalize();
-            let res = h.as_bytes().try_into().unwrap();
-            acc.add_leaf(res);
+            let mut state = Params::new().hash_length(32).to_state();
+            state.update(LEAF_HASH_PREFIX);
+            key.encode(&mut state).unwrap();
+
+            let h = state.finalize();
+            let mut leaf = [0u8; 32];
+            leaf.copy_from_slice(h.as_bytes());
+            acc.add_leaf(&leaf);
         }
 
         let h = Params::new()
@@ -300,8 +320,10 @@ impl UnlockConditions {
             .update(LEAF_HASH_PREFIX)
             .update(&self.required_signatures.to_le_bytes())
             .finalize();
-        let res = h.as_bytes().try_into().unwrap();
-        acc.add_leaf(&res);
+
+        let mut leaf = [0u8; 32];
+        leaf.copy_from_slice(h.as_bytes());
+        acc.add_leaf(&leaf);
 
         Address(acc.root())
     }
@@ -310,12 +332,13 @@ impl UnlockConditions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::encoding::to_bytes;
     use serde_json;
 
     #[test]
     fn test_sia_serialize_algorithm() {
         let algorithm = Algorithm::ED25519;
-        let bytes = encoding::to_bytes(&algorithm).unwrap();
+        let bytes = to_bytes(&algorithm).unwrap();
         let expected: [u8; 16] = [
             b'e', b'd', b'2', b'5', b'5', b'1', b'9', 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ];
@@ -339,7 +362,7 @@ mod tests {
 
         // note: the expected value is the same as the input value, but without the checksum
         assert_eq!(
-            encoding::to_bytes(&address).unwrap(),
+            to_bytes(&address).unwrap(),
             hex::decode("8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c")
                 .unwrap()
         )

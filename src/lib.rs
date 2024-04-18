@@ -1,7 +1,8 @@
 use core::fmt;
+use std::io::{Error, Write};
 
 pub trait SiaEncodable {
-    fn encode(&self, buf: &mut Vec<u8>);
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error>;
 }
 
 pub mod address;
@@ -11,6 +12,7 @@ pub mod encoding;
 pub mod seed;
 pub mod signing;
 pub mod specifier;
+pub mod spendpolicy;
 pub mod transactions;
 
 pub(crate) mod blake2b;
@@ -20,6 +22,7 @@ pub use consensus::*;
 pub use currency::*;
 pub use seed::*;
 pub use signing::*;
+pub use spendpolicy::*;
 pub use transactions::*;
 
 /// encapsulates the various errors that can occur when parsing a Sia object
@@ -68,7 +71,13 @@ impl fmt::Display for Hash256 {
 }
 
 impl SiaEncodable for Hash256 {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(&self.0);
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        w.write_all(&self.0)
+    }
+}
+
+impl AsRef<[u8]> for Hash256 {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
     }
 }

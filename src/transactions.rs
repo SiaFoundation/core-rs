@@ -1,6 +1,7 @@
 use core::fmt;
+use std::io::{Error, Write};
 
-use crate::encoding;
+use crate::encoding::to_writer;
 use crate::Currency;
 use crate::Signature;
 use crate::{Address, UnlockConditions};
@@ -43,8 +44,8 @@ impl SiacoinOutputID {
 }
 
 impl SiaEncodable for SiacoinOutputID {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(&self.0);
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        w.write_all(&self.0)
     }
 }
 
@@ -61,9 +62,9 @@ pub struct SiacoinInput {
 }
 
 impl SiaEncodable for SiacoinInput {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        self.parent_id.encode(buf);
-        self.unlock_conditions.encode(buf);
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        self.parent_id.encode(w)?;
+        self.unlock_conditions.encode(w)
     }
 }
 
@@ -74,9 +75,10 @@ pub struct SiacoinOutput {
 }
 
 impl SiaEncodable for SiacoinOutput {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        self.value.encode(buf);
-        encoding::to_writer(buf, &self.address).unwrap();
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        self.value.encode(w)?;
+        to_writer(w, &self.address).unwrap(); // TODO: handle error
+        Ok(())
     }
 }
 
@@ -111,8 +113,8 @@ impl fmt::Display for SiafundOutputID {
 }
 
 impl SiaEncodable for SiafundOutputID {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(&self.0);
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        w.write_all(&self.0)
     }
 }
 
@@ -124,10 +126,11 @@ pub struct SiafundInput {
 }
 
 impl SiaEncodable for SiafundInput {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        self.parent_id.encode(buf);
-        self.unlock_conditions.encode(buf);
-        encoding::to_writer(buf, &self.claim_address).unwrap();
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        self.parent_id.encode(w)?;
+        self.unlock_conditions.encode(w)?;
+        to_writer(w, &self.claim_address).unwrap(); // TODO: handle error
+        Ok(())
     }
 }
 
@@ -139,10 +142,10 @@ pub struct SiafundOutput {
 }
 
 impl SiaEncodable for SiafundOutput {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        self.value.encode(buf);
-        encoding::to_writer(buf, &self.address).unwrap();
-        self.claim_start.encode(buf);
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        self.value.encode(w)?;
+        to_writer(w, &self.address).unwrap(); // TODO: handle error
+        self.claim_start.encode(w)
     }
 }
 
@@ -170,6 +173,12 @@ impl FileContractID {
     }
 }
 
+impl AsRef<[u8]> for FileContractID {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 impl fmt::Display for FileContractID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "fcid:{}", hex::encode(self.0))
@@ -190,22 +199,22 @@ pub struct FileContract {
 }
 
 impl SiaEncodable for FileContract {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(&self.file_size.to_le_bytes());
-        buf.extend_from_slice(&self.file_merkle_root.as_bytes());
-        buf.extend_from_slice(&self.window_start.to_le_bytes());
-        buf.extend_from_slice(&self.window_end.to_le_bytes());
-        self.payout.encode(buf);
-        buf.extend_from_slice(&(self.valid_proof_outputs.len() as u64).to_le_bytes());
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        w.write_all(&self.file_size.to_le_bytes())?;
+        w.write_all(&self.file_merkle_root.0)?;
+        w.write_all(&self.window_start.to_le_bytes())?;
+        w.write_all(&self.window_end.to_le_bytes())?;
+        self.payout.encode(w)?;
+        w.write_all(&(self.valid_proof_outputs.len() as u64).to_le_bytes())?;
         for output in &self.valid_proof_outputs {
-            output.encode(buf);
+            output.encode(w)?;
         }
-        buf.extend_from_slice(&(self.missed_proof_outputs.len() as u64).to_le_bytes());
+        w.write_all(&(self.missed_proof_outputs.len() as u64).to_le_bytes())?;
         for output in &self.missed_proof_outputs {
-            output.encode(buf);
+            output.encode(w)?;
         }
-        encoding::to_writer(buf, &self.unlock_hash).unwrap();
-        buf.extend_from_slice(&self.revision_number.to_le_bytes());
+        to_writer(w, &self.unlock_hash).unwrap(); // TODO: handle error
+        w.write_all(&self.revision_number.to_le_bytes())
     }
 }
 
@@ -224,23 +233,24 @@ pub struct FileContractRevision {
 }
 
 impl SiaEncodable for FileContractRevision {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(&self.parent_id.as_bytes());
-        self.unlock_conditions.encode(buf);
-        buf.extend_from_slice(&self.revision_number.to_le_bytes());
-        buf.extend_from_slice(&self.file_size.to_le_bytes());
-        buf.extend_from_slice(&self.file_merkle_root.as_bytes());
-        buf.extend_from_slice(&self.window_start.to_le_bytes());
-        buf.extend_from_slice(&self.window_end.to_le_bytes());
-        buf.extend_from_slice(&(self.valid_proof_outputs.len() as u64).to_le_bytes());
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        w.write_all(self.parent_id.as_ref())?;
+        self.unlock_conditions.encode(w)?;
+        w.write_all(&self.revision_number.to_le_bytes())?;
+        w.write_all(&self.file_size.to_le_bytes())?;
+        w.write_all(&self.file_merkle_root.0)?;
+        w.write_all(&self.window_start.to_le_bytes())?;
+        w.write_all(&self.window_end.to_le_bytes())?;
+        w.write_all(&(self.valid_proof_outputs.len() as u64).to_le_bytes())?;
         for output in &self.valid_proof_outputs {
-            output.encode(buf);
+            output.encode(w)?;
         }
-        buf.extend_from_slice(&(self.missed_proof_outputs.len() as u64).to_le_bytes());
+        w.write_all(&(self.missed_proof_outputs.len() as u64).to_le_bytes())?;
         for output in &self.missed_proof_outputs {
-            output.encode(buf);
+            output.encode(w)?;
         }
-        encoding::to_writer(buf, &self.unlock_hash).unwrap();
+        to_writer(w, &self.unlock_hash).unwrap(); // TODO: handle error
+        Ok(())
     }
 }
 
@@ -252,13 +262,14 @@ pub struct StorageProof {
 }
 
 impl SiaEncodable for StorageProof {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(&self.parent_id.as_bytes());
-        buf.extend_from_slice(&self.leaf);
-        buf.extend_from_slice(&(self.proof.len() as u64).to_le_bytes());
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        w.write_all(self.parent_id.as_ref())?;
+        w.write_all(&self.leaf)?;
+        w.write_all(&(self.proof.len() as u64).to_le_bytes())?;
         for proof in &self.proof {
-            buf.extend_from_slice(&proof.as_bytes());
+            w.write_all(proof.as_ref())?;
         }
+        Ok(())
     }
 }
 
@@ -278,48 +289,49 @@ pub struct CoveredFields {
 }
 
 impl SiaEncodable for CoveredFields {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        buf.push(self.whole_transaction as u8);
-        buf.extend_from_slice(&(self.siacoin_inputs.len() as u64).to_le_bytes());
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        w.write_all(&[self.whole_transaction as u8])?;
+        w.write_all(&(self.siacoin_inputs.len() as u64).to_le_bytes())?;
         for input in &self.siacoin_inputs {
-            buf.extend_from_slice(&input.to_le_bytes());
+            w.write_all(&input.to_le_bytes())?;
         }
-        buf.extend_from_slice(&(self.siacoin_outputs.len() as u64).to_le_bytes());
+        w.write_all(&(self.siacoin_outputs.len() as u64).to_le_bytes())?;
         for output in &self.siacoin_outputs {
-            buf.extend_from_slice(&output.to_le_bytes());
+            w.write_all(&output.to_le_bytes())?;
         }
-        buf.extend_from_slice(&(self.siafund_inputs.len() as u64).to_le_bytes());
+        w.write_all(&(self.siafund_inputs.len() as u64).to_le_bytes())?;
         for input in &self.siafund_inputs {
-            buf.extend_from_slice(&input.to_le_bytes());
+            w.write_all(&input.to_le_bytes())?;
         }
-        buf.extend_from_slice(&(self.siafund_outputs.len() as u64).to_le_bytes());
+        w.write_all(&(self.siafund_outputs.len() as u64).to_le_bytes())?;
         for output in &self.siafund_outputs {
-            buf.extend_from_slice(&output.to_le_bytes());
+            w.write_all(&output.to_le_bytes())?;
         }
-        buf.extend_from_slice(&(self.file_contracts.len() as u64).to_le_bytes());
+        w.write_all(&(self.file_contracts.len() as u64).to_le_bytes())?;
         for file_contract in &self.file_contracts {
-            buf.extend_from_slice(&file_contract.to_le_bytes());
+            w.write_all(&file_contract.to_le_bytes())?;
         }
-        buf.extend_from_slice(&(self.file_contract_revisions.len() as u64).to_le_bytes());
+        w.write_all(&(self.file_contract_revisions.len() as u64).to_le_bytes())?;
         for file_contract_revision in &self.file_contract_revisions {
-            buf.extend_from_slice(&file_contract_revision.to_le_bytes());
+            w.write_all(&file_contract_revision.to_le_bytes())?;
         }
-        buf.extend_from_slice(&(self.storage_proofs.len() as u64).to_le_bytes());
+        w.write_all(&(self.storage_proofs.len() as u64).to_le_bytes())?;
         for storage_proof in &self.storage_proofs {
-            buf.extend_from_slice(&storage_proof.to_le_bytes());
+            w.write_all(&storage_proof.to_le_bytes())?;
         }
-        buf.extend_from_slice(&(self.miner_fees.len() as u64).to_le_bytes());
+        w.write_all(&(self.miner_fees.len() as u64).to_le_bytes())?;
         for miner_fee in &self.miner_fees {
-            buf.extend_from_slice(&miner_fee.to_le_bytes());
+            w.write_all(&miner_fee.to_le_bytes())?;
         }
-        buf.extend_from_slice(&(self.arbitrary_data.len() as u64).to_le_bytes());
+        w.write_all(&(self.arbitrary_data.len() as u64).to_le_bytes())?;
         for arbitrary_data in &self.arbitrary_data {
-            buf.extend_from_slice(&arbitrary_data.to_le_bytes());
+            w.write_all(&arbitrary_data.to_le_bytes())?;
         }
-        buf.extend_from_slice(&(self.signatures.len() as u64).to_le_bytes());
+        w.write_all(&(self.signatures.len() as u64).to_le_bytes())?;
         for signature in &self.signatures {
-            buf.extend_from_slice(&signature.to_le_bytes());
+            w.write_all(&signature.to_le_bytes())?;
         }
+        Ok(())
     }
 }
 
@@ -333,12 +345,12 @@ pub struct TransactionSignature {
 }
 
 impl SiaEncodable for TransactionSignature {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(&self.parent_id.as_bytes());
-        buf.extend_from_slice(&self.public_key_index.to_le_bytes());
-        buf.extend_from_slice(&self.timelock.to_le_bytes());
-        self.covered_fields.encode(buf);
-        self.signature.encode(buf);
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        w.write_all(self.parent_id.as_ref())?;
+        w.write_all(&self.public_key_index.to_le_bytes())?;
+        w.write_all(&self.timelock.to_le_bytes())?;
+        self.covered_fields.encode(w)?;
+        self.signature.encode(w)
     }
 }
 
@@ -388,42 +400,42 @@ impl Transaction {
 
         buf.extend_from_slice(&(self.siacoin_inputs.len() as u64).to_le_bytes());
         for input in &self.siacoin_inputs {
-            input.encode(&mut buf);
+            input.encode(&mut buf).unwrap();
         }
 
         buf.extend_from_slice(&(self.siacoin_outputs.len() as u64).to_le_bytes());
         for output in &self.siacoin_outputs {
-            output.encode(&mut buf);
+            output.encode(&mut buf).unwrap();
         }
 
         buf.extend_from_slice(&(self.file_contracts.len() as u64).to_le_bytes());
         for file_contract in &self.file_contracts {
-            file_contract.encode(&mut buf);
+            file_contract.encode(&mut buf).unwrap();
         }
 
         buf.extend_from_slice(&(self.file_contract_revisions.len() as u64).to_le_bytes());
         for file_contract_revision in &self.file_contract_revisions {
-            file_contract_revision.encode(&mut buf);
+            file_contract_revision.encode(&mut buf).unwrap();
         }
 
         buf.extend_from_slice(&(self.storage_proofs.len() as u64).to_le_bytes());
         for storage_proof in &self.storage_proofs {
-            storage_proof.encode(&mut buf);
+            storage_proof.encode(&mut buf).unwrap();
         }
 
         buf.extend_from_slice(&(self.siafund_inputs.len() as u64).to_le_bytes());
         for input in &self.siafund_inputs {
-            input.encode(&mut buf);
+            input.encode(&mut buf).unwrap();
         }
 
         buf.extend_from_slice(&(self.siafund_outputs.len() as u64).to_le_bytes());
         for output in &self.siafund_outputs {
-            output.encode(&mut buf);
+            output.encode(&mut buf).unwrap();
         }
 
         buf.extend_from_slice(&(self.miner_fees.len() as u64).to_le_bytes());
         for fee in &self.miner_fees {
-            fee.encode(&mut buf);
+            fee.encode(&mut buf).unwrap();
         }
 
         buf.extend_from_slice(&(self.arbitrary_data.len() as u64).to_le_bytes());
@@ -433,62 +445,46 @@ impl Transaction {
         }
         buf
     }
+
     pub fn hash_no_sigs(&self, state: &mut State) {
         state.update(&(self.siacoin_inputs.len() as u64).to_le_bytes());
-        let mut buf = Vec::new();
         for input in self.siacoin_inputs.iter() {
-            buf.clear();
-            input.encode(&mut buf);
-            state.update(&buf);
+            input.encode(state).unwrap();
         }
 
         state.update(&(self.siacoin_outputs.len() as u64).to_le_bytes());
         for output in self.siacoin_outputs.iter() {
-            buf.clear();
-            output.encode(&mut buf);
-            state.update(&buf);
+            output.encode(state).unwrap();
         }
 
         state.update(&(self.file_contracts.len() as u64).to_le_bytes());
         for file_contract in self.file_contracts.iter() {
-            buf.clear();
-            file_contract.encode(&mut buf);
-            state.update(&buf);
+            file_contract.encode(state).unwrap();
         }
 
         state.update(&(self.file_contract_revisions.len() as u64).to_le_bytes());
         for file_contract_revision in self.file_contract_revisions.iter() {
-            buf.clear();
-            file_contract_revision.encode(&mut buf);
-            state.update(&buf);
+            file_contract_revision.encode(state).unwrap();
         }
 
         state.update(&(self.storage_proofs.len() as u64).to_le_bytes());
         for storage_proof in self.storage_proofs.iter() {
-            buf.clear();
-            storage_proof.encode(&mut buf);
-            state.update(&buf);
+            storage_proof.encode(state).unwrap();
         }
 
         state.update(&(self.siafund_inputs.len() as u64).to_le_bytes());
         for input in self.siafund_inputs.iter() {
-            buf.clear();
-            input.encode(&mut buf);
-            state.update(&buf);
+            input.encode(state).unwrap();
         }
 
         state.update(&(self.siafund_outputs.len() as u64).to_le_bytes());
         for output in self.siafund_outputs.iter() {
-            buf.clear();
-            output.encode(&mut buf);
-            state.update(&buf);
+            output.encode(state).unwrap();
         }
 
         state.update(&(self.miner_fees.len() as u64).to_le_bytes());
         for fee in self.miner_fees.iter() {
-            buf.clear();
-            fee.encode(&mut buf);
-            state.update(&buf);
+            fee.encode(state).unwrap();
         }
 
         state.update(&(self.arbitrary_data.len() as u64).to_le_bytes());
@@ -541,48 +537,49 @@ impl Transaction {
 }
 
 impl SiaEncodable for Transaction {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(&(self.siacoin_inputs.len() as u64).to_le_bytes());
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        w.write_all(&(self.siacoin_inputs.len() as u64).to_le_bytes())?;
         for input in &self.siacoin_inputs {
-            input.encode(buf);
+            input.encode(w)?;
         }
-        buf.extend_from_slice(&(self.siacoin_outputs.len() as u64).to_le_bytes());
+        w.write_all(&(self.siacoin_outputs.len() as u64).to_le_bytes())?;
         for output in &self.siacoin_outputs {
-            output.encode(buf);
+            output.encode(w)?;
         }
-        buf.extend_from_slice(&(self.file_contracts.len() as u64).to_le_bytes());
+        w.write_all(&(self.file_contracts.len() as u64).to_le_bytes())?;
         for file_contract in &self.file_contracts {
-            file_contract.encode(buf);
+            file_contract.encode(w)?;
         }
-        buf.extend_from_slice(&(self.file_contract_revisions.len() as u64).to_le_bytes());
+        w.write_all(&(self.file_contract_revisions.len() as u64).to_le_bytes())?;
         for file_contract_revision in &self.file_contract_revisions {
-            file_contract_revision.encode(buf);
+            file_contract_revision.encode(w)?;
         }
-        buf.extend_from_slice(&(self.storage_proofs.len() as u64).to_le_bytes());
+        w.write_all(&(self.storage_proofs.len() as u64).to_le_bytes())?;
         for storage_proof in &self.storage_proofs {
-            storage_proof.encode(buf);
+            storage_proof.encode(w)?;
         }
-        buf.extend_from_slice(&(self.siafund_inputs.len() as u64).to_le_bytes());
+        w.write_all(&(self.siafund_inputs.len() as u64).to_le_bytes())?;
         for input in &self.siafund_inputs {
-            input.encode(buf);
+            input.encode(w)?;
         }
-        buf.extend_from_slice(&(self.siafund_outputs.len() as u64).to_le_bytes());
+        w.write_all(&(self.siafund_outputs.len() as u64).to_le_bytes())?;
         for output in &self.siafund_outputs {
-            output.encode(buf);
+            output.encode(w)?;
         }
-        buf.extend_from_slice(&(self.miner_fees.len() as u64).to_le_bytes());
+        w.write_all(&(self.miner_fees.len() as u64).to_le_bytes())?;
         for fee in &self.miner_fees {
-            fee.encode(buf);
+            fee.encode(w)?;
         }
-        buf.extend_from_slice(&(self.arbitrary_data.len() as u64).to_le_bytes());
+        w.write_all(&(self.arbitrary_data.len() as u64).to_le_bytes())?;
         for data in &self.arbitrary_data {
-            buf.extend_from_slice(&(data.len() as u64).to_le_bytes());
-            buf.extend_from_slice(data);
+            w.write_all(&(data.len() as u64).to_le_bytes())?;
+            w.write_all(data)?;
         }
-        buf.extend_from_slice(&(self.signatures.len() as u64).to_le_bytes());
+        w.write_all(&(self.signatures.len() as u64).to_le_bytes())?;
         for signature in &self.signatures {
-            signature.encode(buf);
+            signature.encode(w)?;
         }
+        Ok(())
     }
 }
 
