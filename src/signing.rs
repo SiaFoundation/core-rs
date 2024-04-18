@@ -2,9 +2,143 @@ use core::fmt;
 use std::io::{Error, Write};
 
 use crate::consensus::ChainIndex;
+use crate::encoding::to_writer;
 use crate::transactions::{CoveredFields, Transaction};
-use crate::{HexParseError, SiaEncodable};
+use crate::{Algorithm, HexParseError, SiaEncodable};
 use blake2b_simd::Params;
+use ed25519_dalek::{Signature as ED25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
+
+/// An ed25519 public key that can be used to verify a signature
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct PublicKey([u8; 32]);
+
+impl PublicKey {
+    pub fn new(buf: [u8; 32]) -> Self {
+        PublicKey(buf)
+    }
+
+    pub fn verify(&self, msg: &[u8], signature: &Signature) -> bool {
+        let pk = VerifyingKey::from_bytes(&self.0).unwrap();
+        pk.verify(msg, &ED25519Signature::from_bytes(signature.as_ref()))
+            .is_ok()
+    }
+}
+
+impl AsRef<[u8]> for PublicKey {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+/// An ed25519 private key that can be used to sign a hash
+#[derive(Debug, PartialEq, Clone)]
+pub struct PrivateKey([u8; 64]);
+
+impl PrivateKey {
+    pub fn from_seed(seed: &[u8; 32]) -> Self {
+        let sk = SigningKey::from_bytes(seed);
+        PrivateKey(sk.to_keypair_bytes())
+    }
+
+    pub fn public_key(&self) -> PublicKey {
+        let mut buf = [0u8; 32];
+        buf.copy_from_slice(&self.0[32..]);
+        PublicKey::new(buf)
+    }
+
+    pub fn sign_hash(&self, hash: &[u8; 32]) -> Signature {
+        let sk = SigningKey::from_bytes(&self.0[..32].try_into().unwrap());
+        Signature::new(sk.sign(hash).to_bytes())
+    }
+}
+
+impl AsRef<[u8; 64]> for PrivateKey {
+    fn as_ref(&self) -> &[u8; 64] {
+        &self.0
+    }
+}
+
+impl AsRef<[u8]> for PrivateKey {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl From<PrivateKey> for UnlockKey {
+    fn from(val: PrivateKey) -> Self {
+        UnlockKey::new(Algorithm::ED25519, val.public_key())
+    }
+}
+
+/// A generic public key that can be used to spend a utxo or revise a file
+///  contract
+///
+/// Currently only supports ed25519 keys
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct UnlockKey {
+    algorithm: Algorithm,
+    public_key: PublicKey,
+}
+
+impl UnlockKey {
+    /// Creates a new UnlockKey
+    pub fn new(algorithm: Algorithm, public_key: PublicKey) -> UnlockKey {
+        UnlockKey {
+            algorithm,
+            public_key,
+        }
+    }
+
+    /// Parses an UnlockKey from a string
+    /// The string should be in the format "algorithm:public_key"
+    pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
+        let (prefix, key_str) = s.split_once(':').ok_or(HexParseError::MissingPrefix)?;
+        let algorithm = match prefix {
+            "ed25519" => Algorithm::ED25519,
+            _ => return Err(HexParseError::InvalidPrefix),
+        };
+
+        let mut data = [0u8; 32];
+        hex::decode_to_slice(key_str, &mut data).map_err(HexParseError::HexError)?;
+        Ok(UnlockKey {
+            algorithm,
+            public_key: PublicKey::new(data),
+        })
+    }
+
+    // Returns the public key of the UnlockKey
+    pub fn public_key(&self) -> PublicKey {
+        self.public_key
+    }
+}
+
+impl fmt::Display for UnlockKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}:{}",
+            self.algorithm,
+            hex::encode(self.public_key.as_ref())
+        )
+    }
+}
+
+impl SiaEncodable for UnlockKey {
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        to_writer(w, &self.algorithm).unwrap(); // TODO: handle error
+        w.write_all(&32_u64.to_le_bytes())?;
+        w.write_all(self.public_key.as_ref())
+    }
+}
+
+impl Drop for PrivateKey {
+    fn drop(&mut self) {
+        // Zero out the private key
+        for byte in self.0.iter_mut() {
+            *byte = 0;
+        }
+    }
+}
 
 pub struct NetworkHardforks {
     pub asic_height: u64,
