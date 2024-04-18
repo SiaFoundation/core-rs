@@ -1,5 +1,6 @@
 use core::fmt;
 use std::io::{Error, Write};
+use std::time::SystemTime;
 
 use crate::consensus::ChainIndex;
 use crate::encoding::to_writer;
@@ -140,6 +141,7 @@ impl Drop for PrivateKey {
     }
 }
 
+#[derive(Default, Debug, Clone, Copy)]
 pub struct NetworkHardforks {
     pub asic_height: u64,
 
@@ -149,12 +151,7 @@ pub struct NetworkHardforks {
     pub v2_require_height: u64,
 }
 
-pub struct SigningState {
-    index: ChainIndex,
-    hardforks: NetworkHardforks,
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Signature([u8; 64]);
 
 impl Signature {
@@ -202,9 +199,23 @@ impl fmt::Display for Signature {
     }
 }
 
+pub struct SigningState {
+    pub index: ChainIndex,
+    pub median_timestamp: SystemTime,
+    pub hardforks: NetworkHardforks,
+}
+
 impl SigningState {
-    pub fn new(index: ChainIndex, hardforks: NetworkHardforks) -> Self {
-        SigningState { index, hardforks }
+    pub fn new(
+        index: ChainIndex,
+        median_timestamp: SystemTime,
+        hardforks: NetworkHardforks,
+    ) -> Self {
+        SigningState {
+            index,
+            median_timestamp,
+            hardforks,
+        }
     }
 
     fn replay_prefix(&self) -> &[u8] {
@@ -216,10 +227,6 @@ impl SigningState {
             return &[0];
         }
         &[]
-    }
-
-    pub fn with_index(self, index: ChainIndex) -> Self {
-        SigningState { index, ..self }
     }
 
     pub fn whole_sig_hash(
@@ -351,6 +358,7 @@ mod tests {
                 height: 0,
                 id: [0; 32],
             },
+            median_timestamp: SystemTime::now(),
             hardforks: NetworkHardforks {
                 asic_height: 0,
                 foundation_height: 0,

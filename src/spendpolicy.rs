@@ -6,7 +6,7 @@ use std::{
     time::{self, SystemTime},
 };
 
-use crate::{Address, Hash256, PublicKey, SiaEncodable, Signature, UnlockConditions};
+use crate::{Address, Hash256, PublicKey, SiaEncodable, Signature, SigningState, UnlockConditions};
 
 #[derive(Debug, PartialEq)]
 pub enum PolicyValidationError {
@@ -127,24 +127,25 @@ impl SpendPolicy {
     /// Verify that the policy is satisfied by the given parameters.
     pub fn verify(
         &self,
-        current_height: u64,
-        current_timestamp: SystemTime,
+        signing_state: &SigningState,
         hash: &Hash256,
         signatures: &mut Iter<'_, Signature>,
         preimages: &mut Iter<'_, Vec<u8>>,
     ) -> Result<(), PolicyValidationError> {
         match self {
             SpendPolicy::Above(height) => {
-                if current_height >= *height {
-                    return Ok(());
+                if *height > signing_state.index.height {
+                    Err(PolicyValidationError::InvalidHeight)
+                } else {
+                    Ok(())
                 }
-                Err(PolicyValidationError::InvalidHeight)
             }
             SpendPolicy::After(time) => {
-                if current_timestamp >= *time {
-                    return Ok(());
+                if *time > signing_state.median_timestamp {
+                    Err(PolicyValidationError::InvalidTimestamp)
+                } else {
+                    Ok(())
                 }
-                Err(PolicyValidationError::InvalidTimestamp)
             }
             SpendPolicy::PublicKey(pk) => {
                 let sig = signatures
@@ -180,13 +181,7 @@ impl SpendPolicy {
                     }
 
                     if policy
-                        .verify(
-                            current_height,
-                            current_timestamp,
-                            hash,
-                            signatures,
-                            preimages,
-                        )
+                        .verify(signing_state, hash, signatures, preimages)
                         .is_err()
                     {
                         continue;
@@ -205,7 +200,7 @@ impl SpendPolicy {
             }
             #[allow(deprecated)]
             SpendPolicy::UnlockConditions(uc) => {
-                if uc.timelock > current_height {
+                if uc.timelock > signing_state.index.height {
                     return Err(PolicyValidationError::InvalidHeight);
                 } else if uc.required_signatures > 255 {
                     return Err(PolicyValidationError::InvalidPolicy);
@@ -310,10 +305,43 @@ impl fmt::Display for SpendPolicy {
     }
 }
 
+/// A policy that has been satisfied by a set of preimages and signatures.
+pub struct SatisfiedPolicy {
+    pub policy: SpendPolicy,
+    pub preimages: Vec<Vec<u8>>,
+    pub signatures: Vec<Signature>,
+}
+
+impl SatisfiedPolicy {
+    /// Create a new satisfied policy from a policy, preimages, and signatures.
+    pub fn new(policy: SpendPolicy, preimages: Vec<Vec<u8>>, signatures: Vec<Signature>) -> Self {
+        Self {
+            policy,
+            preimages,
+            signatures,
+        }
+    }
+
+    /// Verify that the policy is satisfied by the given parameters.
+    /// This is a convenience method that calls `verify` on the policy.
+    pub fn verify(
+        &self,
+        state: &SigningState,
+        sig_hash: &Hash256,
+    ) -> Result<(), PolicyValidationError> {
+        self.policy.verify(
+            state,
+            sig_hash,
+            &mut self.signatures.iter(),
+            &mut self.preimages.iter(),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::PrivateKey;
+    use crate::{ChainIndex, NetworkHardforks, PrivateKey};
     use rand::prelude::*;
     use std::time::Duration;
 
@@ -375,8 +403,7 @@ mod tests {
     fn test_verify() {
         struct PolicyTest {
             policy: SpendPolicy,
-            height: u64,
-            timestamp: SystemTime,
+            state: SigningState,
             hash: Hash256,
             signatures: Vec<Signature>,
             preimages: Vec<Vec<u8>>,
@@ -385,8 +412,14 @@ mod tests {
         let test_cases = vec![
             PolicyTest {
                 policy: SpendPolicy::Above(100),
-                height: 99,
-                timestamp: SystemTime::now(),
+                state: SigningState {
+                    index: ChainIndex {
+                        height: 99,
+                        id: [0; 32],
+                    },
+                    median_timestamp: time::UNIX_EPOCH + Duration::from_secs(99),
+                    hardforks: NetworkHardforks::default(),
+                },
                 hash: Hash256([0; 32]),
                 signatures: vec![],
                 preimages: vec![],
@@ -394,8 +427,14 @@ mod tests {
             },
             PolicyTest {
                 policy: SpendPolicy::Above(100),
-                height: 100,
-                timestamp: SystemTime::now(),
+                state: SigningState {
+                    index: ChainIndex {
+                        height: 100,
+                        id: [0; 32],
+                    },
+                    median_timestamp: time::UNIX_EPOCH + Duration::from_secs(99),
+                    hardforks: NetworkHardforks::default(),
+                },
                 hash: Hash256([0; 32]),
                 signatures: vec![],
                 preimages: vec![],
@@ -403,8 +442,14 @@ mod tests {
             },
             PolicyTest {
                 policy: SpendPolicy::After(time::UNIX_EPOCH + Duration::from_secs(100)),
-                height: 0,
-                timestamp: time::UNIX_EPOCH + Duration::from_secs(99),
+                state: SigningState {
+                    index: ChainIndex {
+                        height: 100,
+                        id: [0; 32],
+                    },
+                    median_timestamp: time::UNIX_EPOCH + Duration::from_secs(99),
+                    hardforks: NetworkHardforks::default(),
+                },
                 hash: Hash256([0; 32]),
                 signatures: vec![],
                 preimages: vec![],
@@ -412,8 +457,14 @@ mod tests {
             },
             PolicyTest {
                 policy: SpendPolicy::After(time::UNIX_EPOCH + Duration::from_secs(100)),
-                height: 0,
-                timestamp: SystemTime::now(),
+                state: SigningState {
+                    index: ChainIndex {
+                        height: 100,
+                        id: [0; 32],
+                    },
+                    median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
+                    hardforks: NetworkHardforks::default(),
+                },
                 hash: Hash256([0; 32]),
                 signatures: vec![],
                 preimages: vec![],
@@ -421,8 +472,14 @@ mod tests {
             },
             PolicyTest {
                 policy: SpendPolicy::PublicKey(PublicKey::new([0; 32])),
-                height: 0,
-                timestamp: SystemTime::now(),
+                state: SigningState {
+                    index: ChainIndex {
+                        height: 100,
+                        id: [0; 32],
+                    },
+                    median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
+                    hardforks: NetworkHardforks::default(),
+                },
                 hash: Hash256([0; 32]),
                 signatures: vec![],
                 preimages: vec![],
@@ -430,8 +487,14 @@ mod tests {
             },
             PolicyTest {
                 policy: SpendPolicy::PublicKey(PublicKey::new([0; 32])),
-                height: 0,
-                timestamp: SystemTime::now(),
+                state: SigningState {
+                    index: ChainIndex {
+                        height: 100,
+                        id: [0; 32],
+                    },
+                    median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
+                    hardforks: NetworkHardforks::default(),
+                },
                 hash: Hash256([0; 32]),
                 signatures: vec![Signature::new([0; 64])],
                 preimages: vec![],
@@ -446,8 +509,14 @@ mod tests {
 
                 PolicyTest {
                     policy: SpendPolicy::PublicKey(pk.public_key()),
-                    height: 0,
-                    timestamp: SystemTime::now(),
+                    state: SigningState {
+                        index: ChainIndex {
+                            height: 100,
+                            id: [0; 32],
+                        },
+                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
+                        hardforks: NetworkHardforks::default(),
+                    },
                     hash: Hash256(sig_hash),
                     signatures: vec![pk.sign_hash(&sig_hash)],
                     preimages: vec![],
@@ -469,8 +538,14 @@ mod tests {
                             SpendPolicy::Above(100),
                         ],
                     ),
-                    height: 0,
-                    timestamp: SystemTime::now(),
+                    state: SigningState {
+                        index: ChainIndex {
+                            height: 99,
+                            id: [0; 32],
+                        },
+                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
+                        hardforks: NetworkHardforks::default(),
+                    },
                     hash: Hash256(sig_hash),
                     signatures: vec![pk.sign_hash(&sig_hash)],
                     preimages: vec![],
@@ -492,8 +567,14 @@ mod tests {
                             SpendPolicy::Above(100),
                         ],
                     ),
-                    height: 100,
-                    timestamp: SystemTime::now(),
+                    state: SigningState {
+                        index: ChainIndex {
+                            height: 100,
+                            id: [0; 32],
+                        },
+                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
+                        hardforks: NetworkHardforks::default(),
+                    },
                     hash: Hash256(sig_hash),
                     signatures: vec![Signature::new([0; 64])],
                     preimages: vec![],
@@ -515,8 +596,14 @@ mod tests {
                             SpendPolicy::Above(100),
                         ],
                     ),
-                    height: 100,
-                    timestamp: SystemTime::now(),
+                    state: SigningState {
+                        index: ChainIndex {
+                            height: 100,
+                            id: [0; 32],
+                        },
+                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
+                        hardforks: NetworkHardforks::default(),
+                    },
                     hash: Hash256(sig_hash),
                     signatures: vec![pk.sign_hash(&sig_hash)],
                     preimages: vec![],
@@ -538,8 +625,14 @@ mod tests {
                             SpendPolicy::Opaque(Address::new([0; 32])),
                         ],
                     ),
-                    height: 100,
-                    timestamp: SystemTime::now(),
+                    state: SigningState {
+                        index: ChainIndex {
+                            height: 100,
+                            id: [0; 32],
+                        },
+                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
+                        hardforks: NetworkHardforks::default(),
+                    },
                     hash: Hash256(sig_hash),
                     signatures: vec![pk.sign_hash(&sig_hash)],
                     preimages: vec![],
@@ -561,8 +654,14 @@ mod tests {
                             SpendPolicy::Opaque(Address::new([0; 32])),
                         ],
                     ),
-                    height: 100,
-                    timestamp: SystemTime::now(),
+                    state: SigningState {
+                        index: ChainIndex {
+                            height: 100,
+                            id: [0; 32],
+                        },
+                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
+                        hardforks: NetworkHardforks::default(),
+                    },
                     hash: Hash256(sig_hash),
                     signatures: vec![],
                     preimages: vec![],
@@ -573,8 +672,7 @@ mod tests {
 
         for test in test_cases {
             let result = test.policy.verify(
-                test.height,
-                test.timestamp,
+                &test.state,
                 &test.hash,
                 &mut test.signatures.iter(),
                 &mut test.preimages.iter(),
