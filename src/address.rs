@@ -1,74 +1,13 @@
 use core::fmt;
+use std::io::{Error, Write};
 
-use crate::blake2b::Accumulator;
-use crate::blake2b::LEAF_HASH_PREFIX;
-use crate::encoding;
-use crate::specifier::Specifier;
-use crate::{HexParseError, SiaEncodable, Signature};
+use crate::blake2b::{Accumulator, LEAF_HASH_PREFIX};
+use crate::{specifier::Specifier, HexParseError, PublicKey, SiaEncodable, UnlockKey};
 use blake2b_simd::Params;
-use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
 use serde::Serialize;
 
-/// An ed25519 public key that can be used to verify a signature
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub struct PublicKey([u8; 32]);
-
-impl PublicKey {
-    pub fn verify_hash(&self, hash: &[u8; 32], signature: Signature) -> bool {
-        let pk = VerifyingKey::from_bytes(&self.0).unwrap();
-        pk.verify(hash, &signature.into()).is_ok()
-    }
-}
-
-impl AsRef<[u8]> for PublicKey {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-/// An ed25519 private key that can be used to sign a hash
-#[derive(Debug, PartialEq, Clone)]
-pub struct PrivateKey([u8; 64]);
-
-impl PrivateKey {
-    pub fn from_seed(seed: &[u8; 32]) -> Self {
-        let sk = SigningKey::from_bytes(seed);
-        PrivateKey(sk.to_keypair_bytes())
-    }
-
-    pub fn public_key(&self) -> PublicKey {
-        PublicKey(self.0[32..].try_into().unwrap())
-    }
-
-    pub fn sign_hash(&self, hash: &[u8; 32]) -> Signature {
-        let sk = SigningKey::from_bytes(&self.0[..32].try_into().unwrap());
-        Signature::new(sk.sign(hash).to_vec())
-    }
-}
-
-impl AsRef<[u8]> for PrivateKey {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl From<PrivateKey> for UnlockKey {
-    fn from(val: PrivateKey) -> Self {
-        UnlockKey::new(Algorithm::ED25519, val.public_key())
-    }
-}
-
-impl Drop for PrivateKey {
-    fn drop(&mut self) {
-        // Zero out the private key
-        for byte in self.0.iter_mut() {
-            *byte = 0;
-        }
-    }
-}
-
 /// An address that can be used to receive UTXOs
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Address([u8; 32]);
 
 impl Serialize for Address {
@@ -113,13 +52,21 @@ impl Address {
             return Err(HexParseError::InvalidChecksum);
         }
 
-        Ok(Address(data[..32].try_into().unwrap()))
+        Ok(data[..32].into())
     }
 }
 
 impl AsRef<[u8]> for Address {
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+impl From<&[u8]> for Address {
+    fn from(val: &[u8]) -> Self {
+        let mut data = [0u8; 32];
+        data.copy_from_slice(val);
+        Address(data)
     }
 }
 
@@ -168,62 +115,6 @@ impl Serialize for Algorithm {
     }
 }
 
-/// A generic public key that can be used to spend a utxo or revise a file
-///  contract
-///
-/// Currently only supports ed25519 keys
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub struct UnlockKey {
-    algorithm: Algorithm,
-    public_key: PublicKey,
-}
-
-impl UnlockKey {
-    /// Creates a new UnlockKey
-    pub fn new(algorithm: Algorithm, public_key: PublicKey) -> UnlockKey {
-        UnlockKey {
-            algorithm,
-            public_key,
-        }
-    }
-
-    /// Parses an UnlockKey from a string
-    /// The string should be in the format "algorithm:public_key"
-    pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-        let (prefix, key_str) = s.split_once(':').ok_or(HexParseError::MissingPrefix)?;
-        let algorithm = match prefix {
-            "ed25519" => Algorithm::ED25519,
-            _ => return Err(HexParseError::InvalidPrefix),
-        };
-
-        let mut data = [0u8; 32];
-        hex::decode_to_slice(key_str, &mut data).map_err(HexParseError::HexError)?;
-        Ok(UnlockKey {
-            algorithm,
-            public_key: PublicKey(data),
-        })
-    }
-
-    // Returns the public key of the UnlockKey
-    pub fn public_key(&self) -> PublicKey {
-        self.public_key
-    }
-}
-
-impl fmt::Display for UnlockKey {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}:{}", self.algorithm, hex::encode(self.public_key.0))
-    }
-}
-
-impl SiaEncodable for UnlockKey {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        encoding::to_writer(buf, &self.algorithm).unwrap();
-        buf.extend_from_slice(&32_u64.to_le_bytes());
-        buf.extend_from_slice(self.public_key.as_ref());
-    }
-}
-
 // specifies the conditions for spending an output or revising a file contract.
 #[derive(Debug, PartialEq, Clone)]
 pub struct UnlockConditions {
@@ -233,13 +124,13 @@ pub struct UnlockConditions {
 }
 
 impl SiaEncodable for UnlockConditions {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(&self.timelock.to_le_bytes());
-        buf.extend_from_slice(&(self.public_keys.len() as u64).to_le_bytes());
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        w.write_all(&self.timelock.to_le_bytes())?;
+        w.write_all(&(self.public_keys.len() as u64).to_le_bytes())?;
         for key in &self.public_keys {
-            key.encode(buf);
+            key.encode(w)?;
         }
-        buf.extend_from_slice(&self.required_signatures.to_le_bytes());
+        w.write_all(&self.required_signatures.to_le_bytes())
     }
 }
 
@@ -259,10 +150,7 @@ impl UnlockConditions {
     pub fn standard_unlock_conditions(public_key: PublicKey) -> UnlockConditions {
         UnlockConditions {
             timelock: 0,
-            public_keys: vec![UnlockKey {
-                algorithm: Algorithm::ED25519,
-                public_key,
-            }],
+            public_keys: vec![UnlockKey::new(Algorithm::ED25519, public_key)],
             required_signatures: 1,
         }
     }
@@ -277,21 +165,19 @@ impl UnlockConditions {
             .update(&self.timelock.to_le_bytes())
             .finalize();
 
-        let res = h.as_bytes().try_into().unwrap();
-        acc.add_leaf(&res);
+        let mut leaf = [0u8; 32];
+        leaf.copy_from_slice(h.as_bytes());
+        acc.add_leaf(&leaf);
 
-        let mut buf: Vec<u8> = Vec::new();
         for key in &self.public_keys {
-            buf.clear();
-            key.encode(&mut buf);
-            let h = Params::new()
-                .hash_length(32)
-                .to_state()
-                .update(LEAF_HASH_PREFIX)
-                .update(buf.as_slice())
-                .finalize();
-            let res = h.as_bytes().try_into().unwrap();
-            acc.add_leaf(res);
+            let mut state = Params::new().hash_length(32).to_state();
+            state.update(LEAF_HASH_PREFIX);
+            key.encode(&mut state).unwrap();
+
+            let h = state.finalize();
+            let mut leaf = [0u8; 32];
+            leaf.copy_from_slice(h.as_bytes());
+            acc.add_leaf(&leaf);
         }
 
         let h = Params::new()
@@ -300,8 +186,10 @@ impl UnlockConditions {
             .update(LEAF_HASH_PREFIX)
             .update(&self.required_signatures.to_le_bytes())
             .finalize();
-        let res = h.as_bytes().try_into().unwrap();
-        acc.add_leaf(&res);
+
+        let mut leaf = [0u8; 32];
+        leaf.copy_from_slice(h.as_bytes());
+        acc.add_leaf(&leaf);
 
         Address(acc.root())
     }
@@ -310,12 +198,13 @@ impl UnlockConditions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::encoding::to_bytes;
     use serde_json;
 
     #[test]
     fn test_sia_serialize_algorithm() {
         let algorithm = Algorithm::ED25519;
-        let bytes = encoding::to_bytes(&algorithm).unwrap();
+        let bytes = to_bytes(&algorithm).unwrap();
         let expected: [u8; 16] = [
             b'e', b'd', b'2', b'5', b'5', b'1', b'9', 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ];
@@ -339,7 +228,7 @@ mod tests {
 
         // note: the expected value is the same as the input value, but without the checksum
         assert_eq!(
-            encoding::to_bytes(&address).unwrap(),
+            to_bytes(&address).unwrap(),
             hex::decode("8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c")
                 .unwrap()
         )
@@ -491,7 +380,7 @@ mod tests {
         for (expected_str, public_key) in test_cases {
             let expected = Address::parse_string(expected_str).unwrap();
 
-            let public_key = PublicKey(public_key.as_slice().try_into().unwrap());
+            let public_key = PublicKey::new(public_key.as_slice().try_into().unwrap());
             let uc = UnlockConditions::standard_unlock_conditions(public_key);
             let addr = uc.address();
 

@@ -1,5 +1,6 @@
 use core::num::ParseIntError;
 use core::ops::{Add, Deref, DerefMut, Div, Mul, Sub};
+use std::io::{Error, Write};
 
 use crate::SiaEncodable;
 
@@ -165,7 +166,7 @@ impl Div for Currency {
 }
 
 impl SiaEncodable for Currency {
-    fn encode(&self, buf: &mut Vec<u8>) {
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
         let currency_buf = self.0.to_be_bytes();
         let i = currency_buf
             .iter()
@@ -173,8 +174,9 @@ impl SiaEncodable for Currency {
             .find(|&(_index, &value)| value != 0)
             .map_or(16, |(index, _value)| index); // 16 if all bytes are 0
 
-        buf.extend_from_slice(&(currency_buf[i..].len() as u64).to_le_bytes());
-        buf.extend_from_slice(&currency_buf[i..]);
+        let buf = &currency_buf[i..];
+        w.write_all(&(buf.len() as u64).to_le_bytes())?;
+        w.write_all(buf)
     }
 }
 
@@ -395,7 +397,7 @@ mod tests {
 
         for (currency, expected) in test_cases {
             let mut buf = Vec::new();
-            currency.encode(&mut buf);
+            currency.encode(&mut buf).unwrap();
             assert_eq!(buf, expected, "failed for {:?}", currency);
         }
     }

@@ -1,10 +1,147 @@
 use core::fmt;
+use std::io::{Error, Write};
+use std::time::SystemTime;
 
 use crate::consensus::ChainIndex;
+use crate::encoding::to_writer;
 use crate::transactions::{CoveredFields, Transaction};
-use crate::{HexParseError, SiaEncodable};
+use crate::{Algorithm, HexParseError, SiaEncodable};
 use blake2b_simd::Params;
+use ed25519_dalek::{Signature as ED25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
 
+/// An ed25519 public key that can be used to verify a signature
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct PublicKey([u8; 32]);
+
+impl PublicKey {
+    pub fn new(buf: [u8; 32]) -> Self {
+        PublicKey(buf)
+    }
+
+    pub fn verify(&self, msg: &[u8], signature: &Signature) -> bool {
+        let pk = VerifyingKey::from_bytes(&self.0).unwrap();
+        pk.verify(msg, &ED25519Signature::from_bytes(signature.as_ref()))
+            .is_ok()
+    }
+}
+
+impl AsRef<[u8]> for PublicKey {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+/// An ed25519 private key that can be used to sign a hash
+#[derive(Debug, PartialEq, Clone)]
+pub struct PrivateKey([u8; 64]);
+
+impl PrivateKey {
+    pub fn from_seed(seed: &[u8; 32]) -> Self {
+        let sk = SigningKey::from_bytes(seed);
+        PrivateKey(sk.to_keypair_bytes())
+    }
+
+    pub fn public_key(&self) -> PublicKey {
+        let mut buf = [0u8; 32];
+        buf.copy_from_slice(&self.0[32..]);
+        PublicKey::new(buf)
+    }
+
+    pub fn sign_hash(&self, hash: &[u8; 32]) -> Signature {
+        let sk = SigningKey::from_bytes(&self.0[..32].try_into().unwrap());
+        Signature::new(sk.sign(hash).to_bytes())
+    }
+}
+
+impl AsRef<[u8; 64]> for PrivateKey {
+    fn as_ref(&self) -> &[u8; 64] {
+        &self.0
+    }
+}
+
+impl AsRef<[u8]> for PrivateKey {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl From<PrivateKey> for UnlockKey {
+    fn from(val: PrivateKey) -> Self {
+        UnlockKey::new(Algorithm::ED25519, val.public_key())
+    }
+}
+
+/// A generic public key that can be used to spend a utxo or revise a file
+///  contract
+///
+/// Currently only supports ed25519 keys
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct UnlockKey {
+    algorithm: Algorithm,
+    public_key: PublicKey,
+}
+
+impl UnlockKey {
+    /// Creates a new UnlockKey
+    pub fn new(algorithm: Algorithm, public_key: PublicKey) -> UnlockKey {
+        UnlockKey {
+            algorithm,
+            public_key,
+        }
+    }
+
+    /// Parses an UnlockKey from a string
+    /// The string should be in the format "algorithm:public_key"
+    pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
+        let (prefix, key_str) = s.split_once(':').ok_or(HexParseError::MissingPrefix)?;
+        let algorithm = match prefix {
+            "ed25519" => Algorithm::ED25519,
+            _ => return Err(HexParseError::InvalidPrefix),
+        };
+
+        let mut data = [0u8; 32];
+        hex::decode_to_slice(key_str, &mut data).map_err(HexParseError::HexError)?;
+        Ok(UnlockKey {
+            algorithm,
+            public_key: PublicKey::new(data),
+        })
+    }
+
+    // Returns the public key of the UnlockKey
+    pub fn public_key(&self) -> PublicKey {
+        self.public_key
+    }
+}
+
+impl fmt::Display for UnlockKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}:{}",
+            self.algorithm,
+            hex::encode(self.public_key.as_ref())
+        )
+    }
+}
+
+impl SiaEncodable for UnlockKey {
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        to_writer(w, &self.algorithm).unwrap(); // TODO: handle error
+        w.write_all(&32_u64.to_le_bytes())?;
+        w.write_all(self.public_key.as_ref())
+    }
+}
+
+impl Drop for PrivateKey {
+    fn drop(&mut self) {
+        // Zero out the private key
+        for byte in self.0.iter_mut() {
+            *byte = 0;
+        }
+    }
+}
+
+#[derive(Default, Debug)]
 pub struct NetworkHardforks {
     pub asic_height: u64,
 
@@ -14,17 +151,12 @@ pub struct NetworkHardforks {
     pub v2_require_height: u64,
 }
 
-pub struct SigningState {
-    index: ChainIndex,
-    hardforks: NetworkHardforks,
-}
-
-#[derive(Debug, Clone)]
-pub struct Signature(Vec<u8>);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Signature([u8; 64]);
 
 impl Signature {
-    pub fn new(data: Vec<u8>) -> Self {
-        Signature(data)
+    pub fn new(sig: [u8; 64]) -> Self {
+        Signature(sig)
     }
 
     pub fn data(&self) -> &[u8] {
@@ -38,32 +170,52 @@ impl Signature {
         };
 
         let data = hex::decode(s).map_err(HexParseError::HexError)?;
-        Ok(Signature(data))
+        if data.len() != 64 {
+            return Err(HexParseError::InvalidLength);
+        }
+
+        let mut sig = [0u8; 64];
+        sig.copy_from_slice(&data);
+        Ok(Signature(sig))
     }
 }
 
-impl From<Signature> for ed25519_dalek::Signature {
-    fn from(val: Signature) -> Self {
-        ed25519_dalek::Signature::from_bytes(val.0.as_slice().try_into().unwrap())
+impl AsRef<[u8; 64]> for Signature {
+    fn as_ref(&self) -> &[u8; 64] {
+        &self.0
     }
 }
 
 impl SiaEncodable for Signature {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(&(self.0.len() as u64).to_le_bytes());
-        buf.extend_from_slice(&self.0);
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+        w.write_all(&(self.0.len() as u64).to_le_bytes())?;
+        w.write_all(&self.0)
     }
 }
 
 impl fmt::Display for Signature {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "sig:{}", hex::encode(&self.0))
+        write!(f, "sig:{}", hex::encode(self.0))
     }
 }
 
+pub struct SigningState {
+    pub index: ChainIndex,
+    pub median_timestamp: SystemTime,
+    pub hardforks: NetworkHardforks,
+}
+
 impl SigningState {
-    pub fn new(index: ChainIndex, hardforks: NetworkHardforks) -> Self {
-        SigningState { index, hardforks }
+    pub fn new(
+        index: ChainIndex,
+        median_timestamp: SystemTime,
+        hardforks: NetworkHardforks,
+    ) -> Self {
+        SigningState {
+            index,
+            median_timestamp,
+            hardforks,
+        }
     }
 
     fn replay_prefix(&self) -> &[u8] {
@@ -77,10 +229,6 @@ impl SigningState {
         &[]
     }
 
-    pub fn with_index(self, index: ChainIndex) -> Self {
-        SigningState { index, ..self }
-    }
-
     pub fn whole_sig_hash(
         &self,
         txn: &Transaction,
@@ -90,64 +238,46 @@ impl SigningState {
         covered_sigs: Vec<u64>,
     ) -> [u8; 32] {
         let mut state = Params::new().hash_length(32).to_state();
-
-        let mut buf = Vec::new();
         state.update(&(txn.siacoin_inputs.len() as u64).to_le_bytes());
         for input in txn.siacoin_inputs.iter() {
-            buf.clear();
             state.update(self.replay_prefix());
-            input.encode(&mut buf);
-            state.update(&buf);
+            input.encode(&mut state).unwrap();
         }
 
         state.update(&(txn.siacoin_outputs.len() as u64).to_le_bytes());
         for output in txn.siacoin_outputs.iter() {
-            buf.clear();
-            output.encode(&mut buf);
-            state.update(&buf);
+            output.encode(&mut state).unwrap();
         }
 
         state.update(&(txn.file_contracts.len() as u64).to_le_bytes());
         for file_contract in txn.file_contracts.iter() {
-            buf.clear();
-            file_contract.encode(&mut buf);
-            state.update(&buf);
+            file_contract.encode(&mut state).unwrap();
         }
 
         state.update(&(txn.file_contract_revisions.len() as u64).to_le_bytes());
         for file_contract_revision in txn.file_contract_revisions.iter() {
-            buf.clear();
-            file_contract_revision.encode(&mut buf);
-            state.update(&buf);
+            file_contract_revision.encode(&mut state).unwrap();
         }
 
         state.update(&(txn.storage_proofs.len() as u64).to_le_bytes());
         for storage_proof in txn.storage_proofs.iter() {
-            buf.clear();
-            storage_proof.encode(&mut buf);
-            state.update(&buf);
+            storage_proof.encode(&mut state).unwrap();
         }
 
         state.update(&(txn.siafund_inputs.len() as u64).to_le_bytes());
         for input in txn.siafund_inputs.iter() {
-            buf.clear();
             state.update(self.replay_prefix());
-            input.encode(&mut buf);
-            state.update(&buf);
+            input.encode(&mut state).unwrap();
         }
 
         state.update(&(txn.siafund_outputs.len() as u64).to_le_bytes());
         for output in txn.siafund_outputs.iter() {
-            buf.clear();
-            output.encode(&mut buf);
-            state.update(&buf);
+            output.encode(&mut state).unwrap();
         }
 
         state.update(&(txn.miner_fees.len() as u64).to_le_bytes());
         for fee in txn.miner_fees.iter() {
-            buf.clear();
-            fee.encode(&mut buf);
-            state.update(&buf);
+            fee.encode(&mut state).unwrap();
         }
 
         state.update(&(txn.arbitrary_data.len() as u64).to_le_bytes());
@@ -161,9 +291,7 @@ impl SigningState {
         state.update(&timelock.to_le_bytes());
 
         for i in covered_sigs.into_iter() {
-            buf.clear();
-            txn.signatures[i as usize].encode(&mut buf);
-            state.update(&buf);
+            txn.signatures[i as usize].encode(&mut state).unwrap();
         }
 
         state.finalize().as_bytes().try_into().unwrap()
@@ -172,56 +300,41 @@ impl SigningState {
     pub fn partial_sig_hash(&self, txn: &Transaction, covered_fields: CoveredFields) -> [u8; 32] {
         let mut state = Params::new().hash_length(32).to_state();
 
-        let mut buf = Vec::new();
         for i in covered_fields.siacoin_inputs.into_iter() {
-            buf.clear();
-            txn.siacoin_inputs[i as usize].encode(&mut buf);
             state.update(self.replay_prefix());
-            state.update(&buf);
+            txn.siacoin_inputs[i as usize].encode(&mut state).unwrap();
         }
 
         for i in covered_fields.siacoin_outputs.into_iter() {
-            buf.clear();
-            txn.siacoin_outputs[i as usize].encode(&mut buf);
-            state.update(&buf);
+            txn.siacoin_outputs[i as usize].encode(&mut state).unwrap();
         }
 
         for i in covered_fields.file_contracts.into_iter() {
-            buf.clear();
-            txn.file_contracts[i as usize].encode(&mut buf);
-            state.update(&buf);
+            txn.file_contracts[i as usize].encode(&mut state).unwrap();
         }
 
         for i in covered_fields.file_contract_revisions.into_iter() {
-            buf.clear();
-            txn.file_contract_revisions[i as usize].encode(&mut buf);
-            state.update(&buf);
+            txn.file_contract_revisions[i as usize]
+                .encode(&mut state)
+                .unwrap();
         }
 
         for i in covered_fields.storage_proofs.into_iter() {
-            buf.clear();
-            txn.storage_proofs[i as usize].encode(&mut buf);
-            state.update(&buf);
+            txn.storage_proofs[i as usize].encode(&mut state).unwrap();
         }
 
         for i in covered_fields.siafund_inputs.into_iter() {
-            buf.clear();
-            txn.siafund_inputs[i as usize].encode(&mut buf);
+            txn.siafund_inputs[i as usize].encode(&mut state).unwrap();
             state.update(self.replay_prefix());
-            state.update(&buf);
         }
 
         for i in covered_fields.siafund_outputs.into_iter() {
-            buf.clear();
-            txn.siafund_outputs[i as usize].encode(&mut buf);
+            txn.siafund_outputs[i as usize].encode(&mut state).unwrap();
             state.update(self.replay_prefix());
-            state.update(&buf);
         }
 
         for i in covered_fields.miner_fees.into_iter() {
-            buf.clear();
-            txn.miner_fees[i as usize].encode(&mut buf);
-            state.update(&buf);
+            txn.miner_fees[i as usize].encode(&mut state).unwrap();
         }
 
         for i in covered_fields.arbitrary_data.into_iter() {
@@ -245,6 +358,7 @@ mod tests {
                 height: 0,
                 id: [0; 32],
             },
+            median_timestamp: SystemTime::now(),
             hardforks: NetworkHardforks {
                 asic_height: 0,
                 foundation_height: 0,
