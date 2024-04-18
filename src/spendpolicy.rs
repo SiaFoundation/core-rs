@@ -23,7 +23,7 @@ pub enum PolicyValidationError {
 
 /// A spend policy is a condition or set of conditions that must be met in
 /// order to spend a UTXO.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum SpendPolicy {
     /// A policy that is only valid after a block height
     Above(u64),
@@ -98,24 +98,28 @@ impl SpendPolicy {
 
     /// Returns the address of the policy. This is a hash of the policy that
     /// can be used to receive funds.
-    pub fn address(self) -> Address {
+    pub fn address(&self) -> Address {
+        #[allow(deprecated)]
+        if let SpendPolicy::UnlockConditions(uc) = self {
+            return uc.address();
+        } else if let SpendPolicy::Opaque(addr) = self {
+            return *addr;
+        }
+
         let mut state = Params::new().hash_length(32).to_state();
 
         state.update("sia/address|".as_bytes());
 
-        match self {
-            SpendPolicy::Threshold(n, of) => {
-                let mut opaque = Vec::with_capacity(of.len());
-                for policy in of {
-                    opaque.push(SpendPolicy::Opaque(policy.address()))
-                }
-                SpendPolicy::Threshold(n, opaque)
-                    .encode(&mut state)
-                    .unwrap();
+        if let SpendPolicy::Threshold(n, of) = self {
+            let mut opaque = Vec::with_capacity(of.len());
+            for policy in of {
+                opaque.push(SpendPolicy::Opaque(policy.address()))
             }
-            _ => {
-                self.encode(&mut state).unwrap();
-            }
+            SpendPolicy::Threshold(*n, opaque)
+                .encode(&mut state)
+                .unwrap();
+        } else {
+            self.encode(&mut state).unwrap();
         }
         Address::new(state.finalize().as_bytes().try_into().unwrap())
     }
@@ -576,6 +580,68 @@ mod tests {
                 &mut test.preimages.iter(),
             );
             assert_eq!(result, test.result, "{}", test.policy);
+        }
+    }
+
+    #[test]
+    fn test_opaque_policy() {
+        let test_cases = vec![
+            SpendPolicy::above(100),
+            SpendPolicy::after(time::UNIX_EPOCH + Duration::from_secs(100)),
+            SpendPolicy::public_key(PublicKey::new([0; 32])),
+            SpendPolicy::hash([0; 32]),
+            SpendPolicy::threshold(
+                2,
+                vec![
+                    SpendPolicy::public_key(PublicKey::new([0; 32])),
+                    SpendPolicy::above(100),
+                ],
+            ),
+            SpendPolicy::threshold(
+                2,
+                vec![
+                    SpendPolicy::public_key(PublicKey::new([0; 32])),
+                    SpendPolicy::above(100),
+                    SpendPolicy::threshold(
+                        2,
+                        vec![
+                            SpendPolicy::public_key(PublicKey::new([0; 32])),
+                            SpendPolicy::after(time::UNIX_EPOCH + Duration::from_secs(100)),
+                        ],
+                    ),
+                    SpendPolicy::PublicKey(PublicKey::new([1; 32])),
+                ],
+            ),
+        ];
+
+        for (i, policy) in test_cases.into_iter().enumerate() {
+            let policy = policy.clone();
+            let address = policy.address();
+            let opaque = SpendPolicy::Opaque(address);
+            assert_eq!(
+                opaque.address().to_string(),
+                address.to_string(),
+                "test case {}",
+                i
+            );
+
+            if let SpendPolicy::Threshold(n, of) = policy {
+                // test that the address of opaque threshold policies is the
+                // same as the address of normal threshold policies
+                for j in 0..of.len() {
+                    let mut of = of.clone();
+                    of[j] = SpendPolicy::Opaque(of[j].address());
+                    let opaque_policy = SpendPolicy::threshold(n, of);
+
+                    assert_eq!(
+                        address.to_string(),
+                        opaque_policy.address().to_string(),
+                        "test case {}-{}",
+                        i,
+                        j
+                    );
+                }
+            }
         }
     }
 }
