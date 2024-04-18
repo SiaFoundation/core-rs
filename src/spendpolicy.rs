@@ -668,6 +668,78 @@ mod tests {
                     result: Err(PolicyValidationError::ThresholdNotMet),
                 }
             },
+            {
+                let mut preimage = [0; 64];
+                thread_rng().fill(&mut preimage);
+
+                let mut hasher = Sha256::new();
+                hasher.update(preimage);
+                let h: [u8; 32] = hasher.finalize().into();
+
+                PolicyTest {
+                    policy: SpendPolicy::Hash(h),
+                    state: SigningState {
+                        index: ChainIndex {
+                            height: 100,
+                            id: [0; 32],
+                        },
+                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
+                        hardforks: NetworkHardforks::default(),
+                    },
+                    hash: Hash256([0; 32]),
+                    signatures: vec![],
+                    preimages: vec![],
+                    result: Err(PolicyValidationError::MissingPreimage),
+                }
+            },
+            {
+                let mut preimage = [0; 64];
+                thread_rng().fill(&mut preimage);
+
+                let mut hasher = Sha256::new();
+                hasher.update(preimage);
+                let h: [u8; 32] = hasher.finalize().into();
+
+                PolicyTest {
+                    policy: SpendPolicy::Hash(h),
+                    state: SigningState {
+                        index: ChainIndex {
+                            height: 100,
+                            id: [0; 32],
+                        },
+                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
+                        hardforks: NetworkHardforks::default(),
+                    },
+                    hash: Hash256([0; 32]),
+                    signatures: vec![],
+                    preimages: vec![[0; 64].to_vec()],
+                    result: Err(PolicyValidationError::InvalidPreimage),
+                }
+            },
+            {
+                let mut preimage = [0; 64];
+                thread_rng().fill(&mut preimage);
+
+                let mut hasher = Sha256::new();
+                hasher.update(preimage);
+                let h: [u8; 32] = hasher.finalize().into();
+
+                PolicyTest {
+                    policy: SpendPolicy::Hash(h),
+                    state: SigningState {
+                        index: ChainIndex {
+                            height: 100,
+                            id: [0; 32],
+                        },
+                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
+                        hardforks: NetworkHardforks::default(),
+                    },
+                    hash: Hash256([0; 32]),
+                    signatures: vec![],
+                    preimages: vec![preimage.to_vec()],
+                    result: Ok(()),
+                }
+            },
         ];
 
         for test in test_cases {
