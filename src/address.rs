@@ -2,9 +2,12 @@ use core::fmt;
 
 use crate::blake2b::Accumulator;
 use crate::blake2b::LEAF_HASH_PREFIX;
+use crate::encoding;
+use crate::specifier::Specifier;
 use crate::{HexParseError, SiaEncodable, Signature};
 use blake2b_simd::Params;
 use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
+use serde::Serialize;
 
 /// An ed25519 public key that can be used to verify a signature
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -68,6 +71,19 @@ impl Drop for PrivateKey {
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Address([u8; 32]);
 
+impl Serialize for Address {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if serializer.is_human_readable() {
+            self.to_string().serialize(serializer)
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
+
 impl Address {
     pub fn new(addr: [u8; 32]) -> Address {
         Address(addr)
@@ -123,12 +139,6 @@ impl fmt::Display for Address {
     }
 }
 
-impl SiaEncodable for Address {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(&self.0);
-    }
-}
-
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Algorithm {
     ED25519,
@@ -142,16 +152,19 @@ impl fmt::Display for Algorithm {
     }
 }
 
-impl SiaEncodable for Algorithm {
-    fn encode(&self, buf: &mut Vec<u8>) {
-        let mut spec = [0u8; 16];
+impl Serialize for Algorithm {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
         let str = match self {
             Algorithm::ED25519 => "ed25519",
         };
-        for (i, &byte) in str.as_bytes().iter().enumerate().take(16) {
-            spec[i] = byte;
+        if serializer.is_human_readable() {
+            serializer.serialize_str(str)
+        } else {
+            Specifier::from(str).serialize(serializer)
         }
-        buf.extend_from_slice(&spec)
     }
 }
 
@@ -205,7 +218,7 @@ impl fmt::Display for UnlockKey {
 
 impl SiaEncodable for UnlockKey {
     fn encode(&self, buf: &mut Vec<u8>) {
-        self.algorithm.encode(buf);
+        encoding::to_writer(buf, &self.algorithm).unwrap();
         buf.extend_from_slice(&32_u64.to_le_bytes());
         buf.extend_from_slice(self.public_key.as_ref());
     }
@@ -297,6 +310,53 @@ impl UnlockConditions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json;
+
+    #[test]
+    fn test_sia_serialize_algorithm() {
+        let algorithm = Algorithm::ED25519;
+        let bytes = encoding::to_bytes(&algorithm).unwrap();
+        let expected: [u8; 16] = [
+            b'e', b'd', b'2', b'5', b'5', b'1', b'9', 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        assert_eq!(bytes, expected);
+    }
+
+    #[test]
+    fn test_json_serialize_algorithm() {
+        assert_eq!(
+            serde_json::to_string(&Algorithm::ED25519).unwrap(),
+            "\"ed25519\""
+        )
+    }
+
+    #[test]
+    fn test_sia_serialize_address() {
+        let address = Address::parse_string(
+            "addr:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0",
+        )
+        .unwrap();
+
+        // note: the expected value is the same as the input value, but without the checksum
+        assert_eq!(
+            encoding::to_bytes(&address).unwrap(),
+            hex::decode("8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c")
+                .unwrap()
+        )
+    }
+
+    #[test]
+    fn test_json_serialize_address() {
+        let address = Address::parse_string(
+            "addr:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0",
+        )
+        .unwrap();
+
+        assert_eq!(
+            serde_json::to_string(&address).unwrap(),
+            "\"addr:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0\""
+        )
+    }
 
     #[test]
     fn test_standard_unlockhash() {

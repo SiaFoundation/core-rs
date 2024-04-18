@@ -1,5 +1,6 @@
 use core::fmt;
 
+use crate::encoding;
 use crate::Currency;
 use crate::Signature;
 use crate::{Address, UnlockConditions};
@@ -75,7 +76,7 @@ pub struct SiacoinOutput {
 impl SiaEncodable for SiacoinOutput {
     fn encode(&self, buf: &mut Vec<u8>) {
         self.value.encode(buf);
-        self.address.encode(buf);
+        encoding::to_writer(buf, &self.address).unwrap();
     }
 }
 
@@ -126,7 +127,7 @@ impl SiaEncodable for SiafundInput {
     fn encode(&self, buf: &mut Vec<u8>) {
         self.parent_id.encode(buf);
         self.unlock_conditions.encode(buf);
-        self.claim_address.encode(buf);
+        encoding::to_writer(buf, &self.claim_address).unwrap();
     }
 }
 
@@ -140,7 +141,7 @@ pub struct SiafundOutput {
 impl SiaEncodable for SiafundOutput {
     fn encode(&self, buf: &mut Vec<u8>) {
         self.value.encode(buf);
-        self.address.encode(buf);
+        encoding::to_writer(buf, &self.address).unwrap();
         self.claim_start.encode(buf);
     }
 }
@@ -203,7 +204,7 @@ impl SiaEncodable for FileContract {
         for output in &self.missed_proof_outputs {
             output.encode(buf);
         }
-        self.unlock_hash.encode(buf);
+        encoding::to_writer(buf, &self.unlock_hash).unwrap();
         buf.extend_from_slice(&self.revision_number.to_le_bytes());
     }
 }
@@ -239,7 +240,7 @@ impl SiaEncodable for FileContractRevision {
         for output in &self.missed_proof_outputs {
             output.encode(buf);
         }
-        self.unlock_hash.encode(buf);
+        encoding::to_writer(buf, &self.unlock_hash).unwrap();
     }
 }
 
