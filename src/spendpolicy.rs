@@ -25,15 +25,22 @@ pub enum PolicyValidationError {
 /// order to spend a UTXO.
 #[derive(Debug, PartialEq)]
 pub enum SpendPolicy {
-    Above(u64),                      // Block height
-    After(SystemTime),               // Timestamp
-    PublicKey(PublicKey),            // Public key signature required
-    Hash([u8; 32]),                  // blake2b hash preimage required
-    Threshold(u8, Vec<SpendPolicy>), // Threshold policy with nested policies
-    Opaque(Address),                 // opaque address
+    /// A policy that is only valid after a block height
+    Above(u64),
+    /// A policy that is only valid after a timestamp
+    After(SystemTime),
+    /// A policy that requires a valid signature from an ed25519 key pair
+    PublicKey(PublicKey),
+    /// A policy that requires a valid SHA256 hash preimage
+    Hash([u8; 32]),
+    /// A threshold policy that requires n-of-m sub-policies to be met
+    Threshold(u8, Vec<SpendPolicy>),
+    /// An opaque policy that is not directly spendable
+    Opaque(Address),
 
+    /// A set of v1 unlock conditions for compatibility with v1 transactions
     #[deprecated]
-    UnlockConditions(UnlockConditions), // compat: v1 unlock conditions
+    UnlockConditions(UnlockConditions),
 }
 
 impl SpendPolicy {
@@ -81,7 +88,8 @@ impl SpendPolicy {
         Self::Threshold(n, policies)
     }
 
-    /// compat: v1 unlock conditions
+    /// Create a v1 unlock conditions policy for compatibility with v1
+    /// transactions.
     #[deprecated]
     pub fn unlock_conditions(uc: UnlockConditions) -> Self {
         #[allow(deprecated)]
@@ -112,6 +120,7 @@ impl SpendPolicy {
         Address::new(state.finalize().as_bytes().try_into().unwrap())
     }
 
+    /// Verify that the policy is satisfied by the given parameters.
     pub fn verify(
         &self,
         current_height: u64,
