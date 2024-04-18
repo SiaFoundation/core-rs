@@ -2,14 +2,14 @@ use blake2b_simd::Params;
 use core::{fmt, slice::Iter};
 use sha2::{Digest, Sha256};
 use std::{
-    io::{Error, Write},
+    io::{Error as IOError, Write},
     time::{self, SystemTime},
 };
 
 use crate::{Address, Hash256, PublicKey, SiaEncodable, Signature, SigningState, UnlockConditions};
 
 #[derive(Debug, PartialEq)]
-pub enum PolicyValidationError {
+pub enum ValidationError {
     OpaquePolicy,
     InvalidPolicy,
     InvalidSignature,
@@ -103,7 +103,7 @@ impl SpendPolicy {
         if let SpendPolicy::UnlockConditions(uc) = self {
             return uc.address();
         } else if let SpendPolicy::Opaque(addr) = self {
-            return *addr;
+            return addr.clone();
         }
 
         let mut state = Params::new().hash_length(32).to_state();
@@ -121,7 +121,7 @@ impl SpendPolicy {
         } else {
             self.encode(&mut state).unwrap();
         }
-        Address::new(state.finalize().as_bytes().try_into().unwrap())
+        Address::from(state.finalize().as_bytes())
     }
 
     /// Verify that the policy is satisfied by the given parameters.
@@ -131,36 +131,32 @@ impl SpendPolicy {
         hash: &Hash256,
         signatures: &mut Iter<'_, Signature>,
         preimages: &mut Iter<'_, Vec<u8>>,
-    ) -> Result<(), PolicyValidationError> {
+    ) -> Result<(), ValidationError> {
         match self {
             SpendPolicy::Above(height) => {
                 if *height > signing_state.index.height {
-                    Err(PolicyValidationError::InvalidHeight)
+                    Err(ValidationError::InvalidHeight)
                 } else {
                     Ok(())
                 }
             }
             SpendPolicy::After(time) => {
                 if *time > signing_state.median_timestamp {
-                    Err(PolicyValidationError::InvalidTimestamp)
+                    Err(ValidationError::InvalidTimestamp)
                 } else {
                     Ok(())
                 }
             }
-            SpendPolicy::PublicKey(pk) => {
-                let sig = signatures
-                    .next()
-                    .ok_or(PolicyValidationError::MissingSignature)?;
-                if pk.verify(hash.as_ref(), sig) {
-                    Ok(())
-                } else {
-                    Err(PolicyValidationError::InvalidSignature)
-                }
-            }
+            SpendPolicy::PublicKey(pk) => signatures
+                .next()
+                .ok_or(ValidationError::MissingSignature)
+                .and_then(|sig| {
+                    pk.verify(hash.as_ref(), sig)
+                        .then_some(())
+                        .ok_or(ValidationError::InvalidSignature)
+                }),
             SpendPolicy::Hash(hash) => {
-                let preimage = preimages
-                    .next()
-                    .ok_or(PolicyValidationError::MissingPreimage)?;
+                let preimage = preimages.next().ok_or(ValidationError::MissingPreimage)?;
 
                 let mut hasher = Sha256::new();
                 hasher.update(preimage);
@@ -169,7 +165,7 @@ impl SpendPolicy {
                 if res == *hash {
                     Ok(())
                 } else {
-                    Err(PolicyValidationError::InvalidPreimage)
+                    Err(ValidationError::InvalidPreimage)
                 }
             }
             SpendPolicy::Threshold(n, ref policies) => {
@@ -177,7 +173,7 @@ impl SpendPolicy {
                 for policy in policies {
                     #[allow(deprecated)]
                     if let SpendPolicy::UnlockConditions(_) = policy {
-                        return Err(PolicyValidationError::InvalidPolicy);
+                        return Err(ValidationError::InvalidPolicy);
                     }
 
                     if policy
@@ -195,45 +191,43 @@ impl SpendPolicy {
                 if remaining == 0 {
                     Ok(())
                 } else {
-                    Err(PolicyValidationError::ThresholdNotMet)
+                    Err(ValidationError::ThresholdNotMet)
                 }
             }
             #[allow(deprecated)]
             SpendPolicy::UnlockConditions(uc) => {
                 if uc.timelock > signing_state.index.height {
-                    return Err(PolicyValidationError::InvalidHeight);
+                    return Err(ValidationError::InvalidHeight);
                 } else if uc.required_signatures > 255 {
-                    return Err(PolicyValidationError::InvalidPolicy);
+                    return Err(ValidationError::InvalidPolicy);
                 }
 
                 let mut remaining = uc.required_signatures;
                 for pk in uc.public_keys.iter() {
-                    let sig = signatures
-                        .next()
-                        .ok_or(PolicyValidationError::MissingSignature)?;
+                    let sig = signatures.next().ok_or(ValidationError::MissingSignature)?;
                     if pk.public_key().verify(hash.as_ref(), sig) {
                         remaining -= 1;
                         if remaining == 0 {
                             break;
                         }
                     } else {
-                        return Err(PolicyValidationError::InvalidSignature);
+                        return Err(ValidationError::InvalidSignature);
                     }
                 }
 
                 if remaining == 0 {
                     return Ok(());
                 }
-                Err(PolicyValidationError::ThresholdNotMet)
+                Err(ValidationError::ThresholdNotMet)
             }
-            SpendPolicy::Opaque(_) => Err(PolicyValidationError::OpaquePolicy),
+            SpendPolicy::Opaque(_) => Err(ValidationError::OpaquePolicy),
         }
     }
 
     /// Encode the policy to a writer. This is used by the SiaEncodable trait to
     /// handle recursive threshold policies. The version byte is only written
     /// for the top-level policy.
-    fn encode_policy<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+    fn encode_policy<W: Write>(&self, w: &mut W) -> Result<(), IOError> {
         w.write_all(&[self.type_prefix()])?; // type prefix
         match self {
             SpendPolicy::Above(height) => w.write_all(&height.to_le_bytes()),
@@ -261,7 +255,7 @@ impl SpendPolicy {
 }
 
 impl SiaEncodable for SpendPolicy {
-    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
+    fn encode<W: Write>(&self, w: &mut W) -> Result<(), IOError> {
         w.write_all(&[1])?; // version
         self.encode_policy(w)
     }
@@ -324,11 +318,7 @@ impl SatisfiedPolicy {
 
     /// Verify that the policy is satisfied by the given parameters.
     /// This is a convenience method that calls `verify` on the policy.
-    pub fn verify(
-        &self,
-        state: &SigningState,
-        sig_hash: &Hash256,
-    ) -> Result<(), PolicyValidationError> {
+    pub fn verify(&self, state: &SigningState, sig_hash: &Hash256) -> Result<(), ValidationError> {
         self.policy.verify(
             state,
             sig_hash,
@@ -407,7 +397,7 @@ mod tests {
             hash: Hash256,
             signatures: Vec<Signature>,
             preimages: Vec<Vec<u8>>,
-            result: Result<(), PolicyValidationError>,
+            result: Result<(), ValidationError>,
         }
         let test_cases = vec![
             PolicyTest {
@@ -423,7 +413,7 @@ mod tests {
                 hash: Hash256([0; 32]),
                 signatures: vec![],
                 preimages: vec![],
-                result: Err(PolicyValidationError::InvalidHeight),
+                result: Err(ValidationError::InvalidHeight),
             },
             PolicyTest {
                 policy: SpendPolicy::Above(100),
@@ -453,7 +443,7 @@ mod tests {
                 hash: Hash256([0; 32]),
                 signatures: vec![],
                 preimages: vec![],
-                result: Err(PolicyValidationError::InvalidTimestamp),
+                result: Err(ValidationError::InvalidTimestamp),
             },
             PolicyTest {
                 policy: SpendPolicy::After(time::UNIX_EPOCH + Duration::from_secs(100)),
@@ -483,7 +473,7 @@ mod tests {
                 hash: Hash256([0; 32]),
                 signatures: vec![],
                 preimages: vec![],
-                result: Err(PolicyValidationError::MissingSignature),
+                result: Err(ValidationError::MissingSignature),
             },
             PolicyTest {
                 policy: SpendPolicy::PublicKey(PublicKey::new([0; 32])),
@@ -498,7 +488,7 @@ mod tests {
                 hash: Hash256([0; 32]),
                 signatures: vec![Signature::new([0; 64])],
                 preimages: vec![],
-                result: Err(PolicyValidationError::InvalidSignature),
+                result: Err(ValidationError::InvalidSignature),
             },
             {
                 let mut seed = [0; 32];
@@ -549,7 +539,7 @@ mod tests {
                     hash: Hash256(sig_hash),
                     signatures: vec![pk.sign_hash(&sig_hash)],
                     preimages: vec![],
-                    result: Err(PolicyValidationError::ThresholdNotMet),
+                    result: Err(ValidationError::ThresholdNotMet),
                 }
             },
             {
@@ -578,7 +568,7 @@ mod tests {
                     hash: Hash256(sig_hash),
                     signatures: vec![Signature::new([0; 64])],
                     preimages: vec![],
-                    result: Err(PolicyValidationError::ThresholdNotMet),
+                    result: Err(ValidationError::ThresholdNotMet),
                 }
             },
             {
@@ -665,7 +655,7 @@ mod tests {
                     hash: Hash256(sig_hash),
                     signatures: vec![],
                     preimages: vec![],
-                    result: Err(PolicyValidationError::ThresholdNotMet),
+                    result: Err(ValidationError::ThresholdNotMet),
                 }
             },
             {
@@ -689,7 +679,7 @@ mod tests {
                     hash: Hash256([0; 32]),
                     signatures: vec![],
                     preimages: vec![],
-                    result: Err(PolicyValidationError::MissingPreimage),
+                    result: Err(ValidationError::MissingPreimage),
                 }
             },
             {
@@ -713,7 +703,7 @@ mod tests {
                     hash: Hash256([0; 32]),
                     signatures: vec![],
                     preimages: vec![[0; 64].to_vec()],
-                    result: Err(PolicyValidationError::InvalidPreimage),
+                    result: Err(ValidationError::InvalidPreimage),
                 }
             },
             {
@@ -787,10 +777,11 @@ mod tests {
         for (i, policy) in test_cases.into_iter().enumerate() {
             let policy = policy.clone();
             let address = policy.address();
+            let expected_address = address.to_string();
             let opaque = SpendPolicy::Opaque(address);
             assert_eq!(
                 opaque.address().to_string(),
-                address.to_string(),
+                expected_address,
                 "test case {}",
                 i
             );
@@ -804,8 +795,8 @@ mod tests {
                     let opaque_policy = SpendPolicy::threshold(n, of);
 
                     assert_eq!(
-                        address.to_string(),
                         opaque_policy.address().to_string(),
+                        expected_address,
                         "test case {}-{}",
                         i,
                         j
