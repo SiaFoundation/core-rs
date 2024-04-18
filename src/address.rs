@@ -7,7 +7,7 @@ use blake2b_simd::Params;
 use serde::Serialize;
 
 /// An address that can be used to receive UTXOs
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Address([u8; 32]);
 
 impl Serialize for Address {

@@ -15,7 +15,7 @@ const SIAFUND_OUTPUT_ID_PREFIX: [u8; 16] = [
     b's', b'i', b'a', b'f', b'u', b'n', b'd', b' ', b'o', b'u', b't', b'p', b'u', b't', 0, 0,
 ];
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct SiacoinOutputID([u8; 32]);
 
 impl SiacoinOutputID {
@@ -68,7 +68,7 @@ impl SiaEncodable for SiacoinInput {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct SiacoinOutput {
     pub address: Address,
     pub value: Currency,
@@ -82,7 +82,7 @@ impl SiaEncodable for SiacoinOutput {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct SiafundOutputID([u8; 32]);
 
 impl SiafundOutputID {
@@ -134,7 +134,7 @@ impl SiaEncodable for SiafundInput {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct SiafundOutput {
     pub address: Address,
     pub value: Currency,
@@ -149,7 +149,7 @@ impl SiaEncodable for SiafundOutput {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct FileContractID([u8; 32]);
 
 impl FileContractID {
@@ -354,7 +354,7 @@ impl SiaEncodable for TransactionSignature {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TransactionID([u8; 32]);
 
 impl TransactionID {

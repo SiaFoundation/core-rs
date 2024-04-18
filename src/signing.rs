@@ -141,7 +141,7 @@ impl Drop for PrivateKey {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug)]
 pub struct NetworkHardforks {
     pub asic_height: u64,
 
