@@ -75,6 +75,10 @@ impl<W: io::Write> ser::Serializer for &mut Serializer<'_, W> {
     type SerializeStruct = Self;
     type SerializeStructVariant = Self;
 
+    fn is_human_readable(&self) -> bool {
+        false
+    }
+
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
         self.writer.write_all(if v { &[1] } else { &[0] })?;
         Ok(())

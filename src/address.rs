@@ -68,8 +68,21 @@ impl Drop for PrivateKey {
 }
 
 /// An address that can be used to receive UTXOs
-#[derive(Debug, PartialEq, Clone, Copy, Serialize)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Address([u8; 32]);
+
+impl Serialize for Address {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if serializer.is_human_readable() {
+            self.to_string().serialize(serializer)
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
 
 impl Address {
     pub fn new(addr: [u8; 32]) -> Address {
@@ -144,10 +157,14 @@ impl Serialize for Algorithm {
     where
         S: serde::Serializer,
     {
-        let spec: Specifier = match self {
-            Algorithm::ED25519 => Specifier::from("ed25519"),
+        let str = match self {
+            Algorithm::ED25519 => "ed25519",
         };
-        spec.serialize(serializer)
+        if serializer.is_human_readable() {
+            serializer.serialize_str(str)
+        } else {
+            Specifier::from(str).serialize(serializer)
+        }
     }
 }
 
@@ -293,15 +310,52 @@ impl UnlockConditions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json;
 
     #[test]
-    fn test_serialize_algorithm() {
+    fn test_sia_serialize_algorithm() {
         let algorithm = Algorithm::ED25519;
         let bytes = encoding::to_bytes(&algorithm).unwrap();
         let expected: [u8; 16] = [
             b'e', b'd', b'2', b'5', b'5', b'1', b'9', 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ];
         assert_eq!(bytes, expected);
+    }
+
+    #[test]
+    fn test_json_serialize_algorithm() {
+        assert_eq!(
+            serde_json::to_string(&Algorithm::ED25519).unwrap(),
+            "\"ed25519\""
+        )
+    }
+
+    #[test]
+    fn test_sia_serialize_address() {
+        let address = Address::parse_string(
+            "addr:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0",
+        )
+        .unwrap();
+
+        // note: the expected value is the same as the input value, but without the checksum
+        assert_eq!(
+            encoding::to_bytes(&address).unwrap(),
+            hex::decode("8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c")
+                .unwrap()
+        )
+    }
+
+    #[test]
+    fn test_json_serialize_address() {
+        let address = Address::parse_string(
+            "addr:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0",
+        )
+        .unwrap();
+
+        assert_eq!(
+            serde_json::to_string(&address).unwrap(),
+            "\"addr:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0\""
+        )
     }
 
     #[test]
