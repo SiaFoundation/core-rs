@@ -1,6 +1,6 @@
 use std::{fmt::Display, vec};
 
-use serde::de;
+use serde::{de, Deserialize};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -32,6 +32,15 @@ impl de::Error for Error {
     {
         Error::Custom(msg.to_string())
     }
+}
+
+#[allow(dead_code)]
+pub fn from_reader<'a, T, R>(reader: &'a mut R) -> Result<T, Error>
+where
+    T: Deserialize<'a>,
+    R: std::io::Read,
+{
+    T::deserialize(&mut Deserializer { reader })
 }
 
 impl<'a, R> Deserializer<'a, R>
@@ -411,10 +420,7 @@ mod tests {
             tuple: (false, true),
         };
 
-        let mut de = Deserializer {
-            reader: &mut &data[..],
-        };
-
-        assert_eq!(Test::deserialize(&mut de).unwrap(), expected);
+        let t: Test = from_reader(&mut &data[..]).unwrap();
+        assert_eq!(t, expected);
     }
 }
