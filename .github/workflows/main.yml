@@ -14,6 +14,12 @@ jobs:
       - name: Setup Environment
         run: |
           rustup update stable
+          rustup target add wasm32-unknown-unknown
+      - name: Build for wasm
+        # Check if the library target compiles. This will still allow for using
+        # non-wasm functionality in tests and benchmarks but guarantees that
+        # consumers of the library can use it to generate wasm bindings.
+        run: cargo check --target wasm32-unknown-unknown --lib
       - name: Rustfmt
         run: cargo fmt --all -- --check
       - name: Clippy
