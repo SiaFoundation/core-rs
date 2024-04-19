@@ -277,7 +277,7 @@ impl SigningState {
 
         state.update(&(txn.miner_fees.len() as u64).to_le_bytes());
         for fee in txn.miner_fees.iter() {
-            fee.encode(&mut state).unwrap();
+            to_writer(&mut state, &fee).unwrap();
         }
 
         state.update(&(txn.arbitrary_data.len() as u64).to_le_bytes());
@@ -334,7 +334,7 @@ impl SigningState {
         }
 
         for i in covered_fields.miner_fees.into_iter() {
-            txn.miner_fees[i as usize].encode(&mut state).unwrap();
+            to_writer(&mut state, &txn.miner_fees[i as usize]).unwrap();
         }
 
         for i in covered_fields.arbitrary_data.into_iter() {

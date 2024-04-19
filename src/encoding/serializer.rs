@@ -118,6 +118,11 @@ impl<W: io::Write> ser::Serializer for &mut Serializer<'_, W> {
         Ok(())
     }
 
+    fn serialize_u128(self, v: u128) -> Result<Self::Ok, Self::Error> {
+        self.writer.write_all(&v.to_le_bytes())?;
+        Ok(())
+    }
+
     fn serialize_f32(self, _v: f32) -> Result<Self::Ok, Self::Error> {
         Err(Error::UnsupportedType("f32"))
     }

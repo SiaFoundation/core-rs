@@ -76,7 +76,7 @@ pub struct SiacoinOutput {
 
 impl SiaEncodable for SiacoinOutput {
     fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
-        self.value.encode(w)?;
+        to_writer(w, &self.value).unwrap();
         to_writer(w, &self.address).unwrap(); // TODO: handle error
         Ok(())
     }
@@ -143,9 +143,11 @@ pub struct SiafundOutput {
 
 impl SiaEncodable for SiafundOutput {
     fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
-        self.value.encode(w)?;
-        to_writer(w, &self.address).unwrap(); // TODO: handle error
-        self.claim_start.encode(w)
+        // TODO: handle errors
+        to_writer(w, &self.value).unwrap();
+        to_writer(w, &self.address).unwrap();
+        to_writer(w, &self.claim_start).unwrap();
+        Ok(())
     }
 }
 
@@ -204,7 +206,7 @@ impl SiaEncodable for FileContract {
         w.write_all(&self.file_merkle_root.0)?;
         w.write_all(&self.window_start.to_le_bytes())?;
         w.write_all(&self.window_end.to_le_bytes())?;
-        self.payout.encode(w)?;
+        to_writer(w, &self.payout).unwrap();
         w.write_all(&(self.valid_proof_outputs.len() as u64).to_le_bytes())?;
         for output in &self.valid_proof_outputs {
             output.encode(w)?;
@@ -435,7 +437,7 @@ impl Transaction {
 
         buf.extend_from_slice(&(self.miner_fees.len() as u64).to_le_bytes());
         for fee in &self.miner_fees {
-            fee.encode(&mut buf).unwrap();
+            to_writer(&mut buf, fee).unwrap();
         }
 
         buf.extend_from_slice(&(self.arbitrary_data.len() as u64).to_le_bytes());
@@ -484,7 +486,7 @@ impl Transaction {
 
         state.update(&(self.miner_fees.len() as u64).to_le_bytes());
         for fee in self.miner_fees.iter() {
-            fee.encode(state).unwrap();
+            to_writer(state, fee).unwrap();
         }
 
         state.update(&(self.arbitrary_data.len() as u64).to_le_bytes());
@@ -568,7 +570,7 @@ impl SiaEncodable for Transaction {
         }
         w.write_all(&(self.miner_fees.len() as u64).to_le_bytes())?;
         for fee in &self.miner_fees {
-            fee.encode(w)?;
+            to_writer(w, fee).unwrap();
         }
         w.write_all(&(self.arbitrary_data.len() as u64).to_le_bytes())?;
         for data in &self.arbitrary_data {

@@ -1,8 +1,7 @@
 use core::num::ParseIntError;
 use core::ops::{Add, Deref, DerefMut, Div, Mul, Sub};
-use std::io::{Error, Write};
 
-use crate::SiaEncodable;
+use serde::Serialize;
 
 // I miss untyped constants
 const SIACOIN_PRECISION_I32: i32 = 24;
@@ -11,6 +10,21 @@ const SIACOIN_PRECISION_U32: u32 = 24;
 // Currency represents a quantity of Siacoins as Hastings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Currency(u128);
+
+// TODO: To distinguish between v1 and v2 currencies we could make Currency an
+// enum.  However, then the arithmetic operations become a bit tricky. We'd need
+// to decide on what to do about mixing v1 and v2 currencies.
+impl Serialize for Currency {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let currency_buf = self.to_be_bytes();
+        let i = currency_buf
+            .iter()
+            .enumerate()
+            .find(|&(_index, &value)| value != 0)
+            .map_or(16, |(index, _value)| index); // 16 if all bytes are 0
+        currency_buf[i..].serialize(serializer)
+    }
+}
 
 // Implement Deref and DerefMut to be able to implicitly use Currency as a u128
 // This gives us all the traits that u128 already implements for free.
@@ -165,21 +179,6 @@ impl Div for Currency {
     }
 }
 
-impl SiaEncodable for Currency {
-    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
-        let currency_buf = self.0.to_be_bytes();
-        let i = currency_buf
-            .iter()
-            .enumerate()
-            .find(|&(_index, &value)| value != 0)
-            .map_or(16, |(index, _value)| index); // 16 if all bytes are 0
-
-        let buf = &currency_buf[i..];
-        w.write_all(&(buf.len() as u64).to_le_bytes())?;
-        w.write_all(buf)
-    }
-}
-
 #[derive(Debug, PartialEq)]
 pub enum CurrencyParseError {
     ParseIntErr(ParseIntError),
@@ -277,6 +276,8 @@ impl FromStr for Currency {
 
 #[cfg(test)]
 mod tests {
+    use crate::encoding::to_bytes;
+
     use super::*;
 
     /*	#[test]
@@ -396,9 +397,8 @@ mod tests {
         ];
 
         for (currency, expected) in test_cases {
-            let mut buf = Vec::new();
-            currency.encode(&mut buf).unwrap();
-            assert_eq!(buf, expected, "failed for {:?}", currency);
+            let bytes = to_bytes(&currency).unwrap();
+            assert_eq!(bytes, expected, "failed for {:?}", currency);
         }
     }
 }
