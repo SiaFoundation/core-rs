@@ -7,6 +7,7 @@ use crate::Signature;
 use crate::{Address, UnlockConditions};
 use crate::{Hash256, HexParseError, SiaEncodable};
 use blake2b_simd::{Params, State};
+use serde::Serialize;
 
 const SIACOIN_OUTPUT_ID_PREFIX: [u8; 16] = [
     b's', b'i', b'a', b'c', b'o', b'i', b'n', b' ', b'o', b'u', b't', b'p', b'u', b't', 0, 0,
@@ -134,21 +135,11 @@ impl SiaEncodable for SiafundInput {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SiafundOutput {
     pub address: Address,
     pub value: Currency,
     pub claim_start: Currency,
-}
-
-impl SiaEncodable for SiafundOutput {
-    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
-        // TODO: handle errors
-        to_writer(w, &self.value).unwrap();
-        to_writer(w, &self.address).unwrap();
-        to_writer(w, &self.claim_start).unwrap();
-        Ok(())
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -432,7 +423,7 @@ impl Transaction {
 
         buf.extend_from_slice(&(self.siafund_outputs.len() as u64).to_le_bytes());
         for output in &self.siafund_outputs {
-            output.encode(&mut buf).unwrap();
+            to_writer(&mut buf, output).unwrap();
         }
 
         buf.extend_from_slice(&(self.miner_fees.len() as u64).to_le_bytes());
@@ -481,7 +472,7 @@ impl Transaction {
 
         state.update(&(self.siafund_outputs.len() as u64).to_le_bytes());
         for output in self.siafund_outputs.iter() {
-            output.encode(state).unwrap();
+            to_writer(state, output).unwrap();
         }
 
         state.update(&(self.miner_fees.len() as u64).to_le_bytes());
@@ -566,7 +557,7 @@ impl SiaEncodable for Transaction {
         }
         w.write_all(&(self.siafund_outputs.len() as u64).to_le_bytes())?;
         for output in &self.siafund_outputs {
-            output.encode(w)?;
+            to_writer(w, output).unwrap();
         }
         w.write_all(&(self.miner_fees.len() as u64).to_le_bytes())?;
         for fee in &self.miner_fees {

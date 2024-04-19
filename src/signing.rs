@@ -272,7 +272,7 @@ impl SigningState {
 
         state.update(&(txn.siafund_outputs.len() as u64).to_le_bytes());
         for output in txn.siafund_outputs.iter() {
-            output.encode(&mut state).unwrap();
+            to_writer(&mut state, output).unwrap();
         }
 
         state.update(&(txn.miner_fees.len() as u64).to_le_bytes());
@@ -329,7 +329,7 @@ impl SigningState {
         }
 
         for i in covered_fields.siafund_outputs.into_iter() {
-            txn.siafund_outputs[i as usize].encode(&mut state).unwrap();
+            to_writer(&mut state, &txn.siafund_outputs[i as usize]).unwrap();
             state.update(self.replay_prefix());
         }
 
