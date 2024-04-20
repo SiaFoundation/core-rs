@@ -126,9 +126,8 @@ impl<W: io::Write> ser::Serializer for &mut Serializer<'_, W> {
         Err(Error::UnsupportedType("f64"))
     }
 
-    fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
-        let mut buf: [u8; 4] = [0; 4];
-        self.serialize_str(v.encode_utf8(&mut buf))
+    fn serialize_char(self, _v: char) -> Result<Self::Ok, Self::Error> {
+        Err(Error::UnsupportedType("char"))
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
@@ -423,7 +422,7 @@ mod tests {
     use serde::Serialize;
 
     #[test]
-    fn test_struct() {
+    fn test_deserializer() {
         #[derive(Serialize)]
         struct UnitStruct;
         #[derive(Serialize)]
@@ -437,8 +436,6 @@ mod tests {
             unsigned16: u16,
             unsigned32: u32,
             unsigned64: u64,
-            character8: char,
-            character16: char,
             string: String,
             var_bytes: Vec<u8>,   // dynamic size slice
             fixed_bytes: [u8; 3], // fixed size array
@@ -457,8 +454,6 @@ mod tests {
             unsigned16: 2,
             unsigned32: 3,
             unsigned64: 4,
-            character8: 'a',
-            character16: '❤',
             string: "foo".to_string(),
             var_bytes: vec![1, 2, 3],
             fixed_bytes: [1, 2, 3],
@@ -476,8 +471,6 @@ mod tests {
             2, 0, 0, 0, 0, 0, 0, 0, // 2
             3, 0, 0, 0, 0, 0, 0, 0, // 3
             4, 0, 0, 0, 0, 0, 0, 0, // 4
-            1, 0, 0, 0, 0, 0, 0, 0, // 'a'
-            97, 3, 0, 0, 0, 0, 0, 0, 0, 226, 157, 164, // '❤'
             3, 0, 0, 0, 0, 0, 0, 0, 102, 111, 111, // "foo"
             3, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, // var_bytes prefix + [1, 2, 3]
             1, 2, 3, // fixed_bytes [1, 2, 3]
