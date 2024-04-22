@@ -8,10 +8,17 @@ use crate::transactions::{CoveredFields, Transaction};
 use crate::{Algorithm, HexParseError, SiaEncodable};
 use blake2b_simd::Params;
 use ed25519_dalek::{Signature as ED25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use serde::Serialize;
 
 /// An ed25519 public key that can be used to verify a signature
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct PublicKey([u8; 32]);
+
+impl Serialize for PublicKey {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_bytes(&self.0)
+    }
+}
 
 impl PublicKey {
     pub fn new(buf: [u8; 32]) -> Self {
@@ -75,7 +82,7 @@ impl From<PrivateKey> for UnlockKey {
 ///  contract
 ///
 /// Currently only supports ed25519 keys
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, Serialize)]
 pub struct UnlockKey {
     algorithm: Algorithm,
     public_key: PublicKey,
@@ -350,6 +357,24 @@ impl SigningState {
 mod tests {
     use super::*;
     use crate::*;
+
+    #[test]
+    fn test_public_key() {
+        let key: [u8; 32] = [
+            0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda,
+            0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb,
+            0x1d, 0x1c, 0xe1, 0xb6,
+        ];
+        let pk = UnlockKey::new(Algorithm::ED25519, PublicKey::new(key));
+        assert_eq!(
+            &encoding::to_bytes(&pk).unwrap(),
+            &[
+                101, 100, 50, 53, 53, 49, 57, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0,
+                154, 172, 31, 251, 28, 253, 16, 121, 168, 198, 200, 123, 71, 218, 29, 86, 126, 53,
+                185, 114, 52, 153, 60, 40, 140, 26, 208, 219, 29, 28, 225, 182
+            ]
+        );
+    }
 
     #[test]
     fn test_whole_sig_hash() {
