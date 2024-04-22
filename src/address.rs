@@ -1,8 +1,8 @@
 use core::fmt;
-use std::io::{Error, Write};
 
 use crate::blake2b::{Accumulator, LEAF_HASH_PREFIX};
-use crate::{specifier::Specifier, HexParseError, PublicKey, SiaEncodable, UnlockKey};
+use crate::encoding::to_writer;
+use crate::{specifier::Specifier, HexParseError, PublicKey, UnlockKey};
 use blake2b_simd::Params;
 use serde::Serialize;
 
@@ -116,22 +116,11 @@ impl Serialize for Algorithm {
 }
 
 // specifies the conditions for spending an output or revising a file contract.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct UnlockConditions {
     pub timelock: u64,
     pub public_keys: Vec<UnlockKey>,
     pub required_signatures: u64,
-}
-
-impl SiaEncodable for UnlockConditions {
-    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
-        w.write_all(&self.timelock.to_le_bytes())?;
-        w.write_all(&(self.public_keys.len() as u64).to_le_bytes())?;
-        for key in &self.public_keys {
-            key.encode(w)?;
-        }
-        w.write_all(&self.required_signatures.to_le_bytes())
-    }
 }
 
 impl UnlockConditions {
@@ -172,7 +161,7 @@ impl UnlockConditions {
         for key in &self.public_keys {
             let mut state = Params::new().hash_length(32).to_state();
             state.update(LEAF_HASH_PREFIX);
-            key.encode(&mut state).unwrap();
+            to_writer(&mut state, key).unwrap();
 
             let h = state.finalize();
             let mut leaf = [0u8; 32];
@@ -244,6 +233,31 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&address).unwrap(),
             "\"addr:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0\""
+        )
+    }
+
+    #[test]
+    fn test_serialize_unlock_conditions() {
+        let uc = UnlockConditions::new(
+            123,
+            vec![UnlockKey::new(
+                Algorithm::ED25519,
+                PublicKey::new([
+                    0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47,
+                    0xda, 0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a,
+                    0xd0, 0xdb, 0x1d, 0x1c, 0xe1, 0xb6,
+                ]),
+            )],
+            1,
+        );
+        assert_eq!(
+            to_bytes(&uc).unwrap(),
+            [
+                123, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 101, 100, 50, 53, 53, 49, 57, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 154, 172, 31, 251, 28, 253, 16,
+                121, 168, 198, 200, 123, 71, 218, 29, 86, 126, 53, 185, 114, 52, 153, 60, 40, 140,
+                26, 208, 219, 29, 28, 225, 182, 1, 0, 0, 0, 0, 0, 0, 0
+            ]
         )
     }
 

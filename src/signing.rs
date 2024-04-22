@@ -3,7 +3,6 @@ use std::io::{Error, Write};
 use std::time::SystemTime;
 
 use crate::consensus::ChainIndex;
-use crate::encoding::to_writer;
 use crate::transactions::{CoveredFields, Transaction};
 use crate::{Algorithm, HexParseError, SiaEncodable};
 use blake2b_simd::Params;
@@ -128,14 +127,6 @@ impl fmt::Display for UnlockKey {
             self.algorithm,
             hex::encode(self.public_key.as_ref())
         )
-    }
-}
-
-impl SiaEncodable for UnlockKey {
-    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
-        to_writer(w, &self.algorithm).unwrap(); // TODO: handle error
-        w.write_all(&32_u64.to_le_bytes())?;
-        w.write_all(self.public_key.as_ref())
     }
 }
 
@@ -359,7 +350,7 @@ mod tests {
     use crate::*;
 
     #[test]
-    fn test_public_key() {
+    fn test_serialize_public_key() {
         let key: [u8; 32] = [
             0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda,
             0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb,

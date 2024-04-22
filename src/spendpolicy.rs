@@ -1,5 +1,6 @@
 use blake2b_simd::Params;
 use core::{fmt, slice::Iter};
+use serde_json::to_writer;
 use sha2::{Digest, Sha256};
 use std::{
     io::{Error as IOError, Write},
@@ -259,7 +260,10 @@ impl SpendPolicy {
             }
             SpendPolicy::Opaque(addr) => w.write_all(addr.as_ref()),
             #[allow(deprecated)]
-            SpendPolicy::UnlockConditions(uc) => uc.encode(w),
+            SpendPolicy::UnlockConditions(uc) => {
+                to_writer(w, uc).unwrap();
+                Ok(())
+            }
         }
     }
 }

@@ -64,7 +64,8 @@ pub struct SiacoinInput {
 impl SiaEncodable for SiacoinInput {
     fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
         self.parent_id.encode(w)?;
-        self.unlock_conditions.encode(w)
+        to_writer(w, &self.unlock_conditions).unwrap();
+        Ok(())
     }
 }
 
@@ -128,7 +129,7 @@ pub struct SiafundInput {
 impl SiaEncodable for SiafundInput {
     fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
         self.parent_id.encode(w)?;
-        self.unlock_conditions.encode(w)?;
+        to_writer(w, &self.unlock_conditions).unwrap();
         to_writer(w, &self.claim_address).unwrap(); // TODO: handle error
         Ok(())
     }
@@ -235,7 +236,7 @@ pub struct FileContractRevision {
 impl SiaEncodable for FileContractRevision {
     fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
         w.write_all(self.parent_id.as_ref())?;
-        self.unlock_conditions.encode(w)?;
+        to_writer(w, &self.unlock_conditions).unwrap();
         w.write_all(&self.revision_number.to_le_bytes())?;
         w.write_all(&self.file_size.to_le_bytes())?;
         w.write_all(&self.file_merkle_root.0)?;
