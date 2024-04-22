@@ -7,6 +7,7 @@ use crate::Signature;
 use crate::{Address, UnlockConditions};
 use crate::{Hash256, HexParseError, SiaEncodable};
 use blake2b_simd::{Params, State};
+use serde::Serialize;
 
 const SIACOIN_OUTPUT_ID_PREFIX: [u8; 16] = [
     b's', b'i', b'a', b'c', b'o', b'i', b'n', b' ', b'o', b'u', b't', b'p', b'u', b't', 0, 0,
@@ -274,7 +275,7 @@ impl SiaEncodable for StorageProof {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CoveredFields {
     pub whole_transaction: bool,
     pub siacoin_inputs: Vec<u64>,
@@ -289,70 +290,13 @@ pub struct CoveredFields {
     pub signatures: Vec<u64>,
 }
 
-impl SiaEncodable for CoveredFields {
-    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
-        w.write_all(&[self.whole_transaction as u8])?;
-        w.write_all(&(self.siacoin_inputs.len() as u64).to_le_bytes())?;
-        for input in &self.siacoin_inputs {
-            w.write_all(&input.to_le_bytes())?;
-        }
-        w.write_all(&(self.siacoin_outputs.len() as u64).to_le_bytes())?;
-        for output in &self.siacoin_outputs {
-            w.write_all(&output.to_le_bytes())?;
-        }
-        w.write_all(&(self.siafund_inputs.len() as u64).to_le_bytes())?;
-        for input in &self.siafund_inputs {
-            w.write_all(&input.to_le_bytes())?;
-        }
-        w.write_all(&(self.siafund_outputs.len() as u64).to_le_bytes())?;
-        for output in &self.siafund_outputs {
-            w.write_all(&output.to_le_bytes())?;
-        }
-        w.write_all(&(self.file_contracts.len() as u64).to_le_bytes())?;
-        for file_contract in &self.file_contracts {
-            w.write_all(&file_contract.to_le_bytes())?;
-        }
-        w.write_all(&(self.file_contract_revisions.len() as u64).to_le_bytes())?;
-        for file_contract_revision in &self.file_contract_revisions {
-            w.write_all(&file_contract_revision.to_le_bytes())?;
-        }
-        w.write_all(&(self.storage_proofs.len() as u64).to_le_bytes())?;
-        for storage_proof in &self.storage_proofs {
-            w.write_all(&storage_proof.to_le_bytes())?;
-        }
-        w.write_all(&(self.miner_fees.len() as u64).to_le_bytes())?;
-        for miner_fee in &self.miner_fees {
-            w.write_all(&miner_fee.to_le_bytes())?;
-        }
-        w.write_all(&(self.arbitrary_data.len() as u64).to_le_bytes())?;
-        for arbitrary_data in &self.arbitrary_data {
-            w.write_all(&arbitrary_data.to_le_bytes())?;
-        }
-        w.write_all(&(self.signatures.len() as u64).to_le_bytes())?;
-        for signature in &self.signatures {
-            w.write_all(&signature.to_le_bytes())?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TransactionSignature {
     pub parent_id: Hash256,
     pub public_key_index: u64,
     pub timelock: u64,
     pub covered_fields: CoveredFields,
     pub signature: Signature,
-}
-
-impl SiaEncodable for TransactionSignature {
-    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
-        w.write_all(self.parent_id.as_ref())?;
-        w.write_all(&self.public_key_index.to_le_bytes())?;
-        w.write_all(&self.timelock.to_le_bytes())?;
-        self.covered_fields.encode(w)?;
-        self.signature.encode(w)
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -576,10 +520,7 @@ impl SiaEncodable for Transaction {
             w.write_all(&(data.len() as u64).to_le_bytes())?;
             w.write_all(data)?;
         }
-        w.write_all(&(self.signatures.len() as u64).to_le_bytes())?;
-        for signature in &self.signatures {
-            signature.encode(w)?;
-        }
+        to_writer(w, &self.signatures).unwrap();
         Ok(())
     }
 }

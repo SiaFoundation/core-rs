@@ -1,5 +1,4 @@
 use core::fmt;
-use std::io::{Error, Write};
 use std::time::SystemTime;
 
 use crate::consensus::ChainIndex;
@@ -8,6 +7,7 @@ use crate::{Algorithm, HexParseError, SiaEncodable};
 use blake2b_simd::Params;
 use ed25519_dalek::{Signature as ED25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::Serialize;
+use serde_json::to_writer;
 
 /// An ed25519 public key that can be used to verify a signature
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -152,6 +152,12 @@ pub struct NetworkHardforks {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Signature([u8; 64]);
 
+impl Serialize for Signature {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_bytes(&self.0) // prefixed with length
+    }
+}
+
 impl Signature {
     pub fn new(sig: [u8; 64]) -> Self {
         Signature(sig)
@@ -181,13 +187,6 @@ impl Signature {
 impl AsRef<[u8; 64]> for Signature {
     fn as_ref(&self) -> &[u8; 64] {
         &self.0
-    }
-}
-
-impl SiaEncodable for Signature {
-    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
-        w.write_all(&(self.0.len() as u64).to_le_bytes())?;
-        w.write_all(&self.0)
     }
 }
 
@@ -288,8 +287,8 @@ impl SigningState {
         state.update(&public_key_index.to_le_bytes());
         state.update(&timelock.to_le_bytes());
 
-        for i in covered_sigs.into_iter() {
-            txn.signatures[i as usize].encode(&mut state).unwrap();
+        for i in covered_sigs.iter() {
+            to_writer(&mut state, i).unwrap();
         }
 
         state.finalize().as_bytes().try_into().unwrap()

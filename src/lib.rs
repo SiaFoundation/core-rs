@@ -21,6 +21,7 @@ pub use address::*;
 pub use consensus::*;
 pub use currency::*;
 pub use seed::*;
+use serde::Serialize;
 pub use signing::*;
 pub use spendpolicy::*;
 pub use transactions::*;
@@ -36,7 +37,7 @@ pub enum HexParseError {
     HexError(hex::FromHexError),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub struct Hash256([u8; 32]);
 
 impl Hash256 {
@@ -67,12 +68,6 @@ impl Hash256 {
 impl fmt::Display for Hash256 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "h:{}", hex::encode(self.0))
-    }
-}
-
-impl SiaEncodable for Hash256 {
-    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
-        w.write_all(&self.0)
     }
 }
 
