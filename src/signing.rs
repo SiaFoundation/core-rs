@@ -173,7 +173,11 @@ pub struct Signature([u8; 64]);
 
 impl Serialize for Signature {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_bytes(&self.0) // prefixed with length
+        if serializer.is_human_readable() {
+            serializer.serialize_str(&self.to_string())
+        } else {
+            serializer.serialize_bytes(&self.0) // prefixed with length
+        }
     }
 }
 
@@ -391,6 +395,20 @@ mod tests {
             )
             .unwrap(),
             "\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\""
+        );
+    }
+
+    #[test]
+    fn test_json_serialize_signature() {
+        assert_eq!(
+            serde_json::to_string(
+                &Signature::parse_string(
+                    "sig:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b69aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6"
+                )
+                .unwrap()
+            )
+            .unwrap(),
+            "\"sig:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b69aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\""
         );
     }
 
