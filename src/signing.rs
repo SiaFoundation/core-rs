@@ -6,6 +6,7 @@ use crate::transactions::{CoveredFields, Transaction};
 use crate::{Algorithm, HexParseError, SiaEncodable};
 use blake2b_simd::Params;
 use ed25519_dalek::{Signature as ED25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use serde::ser::SerializeStruct;
 use serde::Serialize;
 use serde_json::to_writer;
 
@@ -16,6 +17,12 @@ pub struct PublicKey([u8; 32]);
 impl Serialize for PublicKey {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_bytes(&self.0)
+    }
+}
+
+impl fmt::Display for PublicKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        hex::encode(self.0).fmt(f)
     }
 }
 
@@ -81,10 +88,29 @@ impl From<PrivateKey> for UnlockKey {
 ///  contract
 ///
 /// Currently only supports ed25519 keys
-#[derive(Debug, PartialEq, Clone, Copy, Serialize)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct UnlockKey {
     algorithm: Algorithm,
     public_key: PublicKey,
+}
+
+impl Serialize for UnlockKey {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            serializer.serialize_str(&self.to_string())
+        } else {
+            let mut s = serializer.serialize_struct("UnlockKey", 2)?;
+            s.serialize_field("algorithm", &self.algorithm)?;
+            s.serialize_field("public_key", &self.public_key)?;
+            s.end()
+        }
+    }
+}
+
+impl fmt::Display for UnlockKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:{}", self.algorithm, self.public_key)
+    }
 }
 
 impl UnlockKey {
@@ -116,17 +142,6 @@ impl UnlockKey {
     // Returns the public key of the UnlockKey
     pub fn public_key(&self) -> PublicKey {
         self.public_key
-    }
-}
-
-impl fmt::Display for UnlockKey {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}:{}",
-            self.algorithm,
-            hex::encode(self.public_key.as_ref())
-        )
     }
 }
 
@@ -347,6 +362,20 @@ impl SigningState {
 mod tests {
     use super::*;
     use crate::*;
+
+    #[test]
+    fn test_json_serialize_unlockkey() {
+        assert_eq!(
+            serde_json::to_string(
+                &UnlockKey::parse_string(
+                    "ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6"
+                )
+                .unwrap()
+            )
+            .unwrap(),
+            "\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\""
+        );
+    }
 
     #[test]
     fn test_serialize_public_key() {
