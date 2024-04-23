@@ -275,7 +275,7 @@ impl SiaEncodable for StorageProof {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoveredFields {
     pub whole_transaction: bool,
@@ -289,24 +289,6 @@ pub struct CoveredFields {
     pub miner_fees: Vec<u64>,
     pub arbitrary_data: Vec<u64>,
     pub signatures: Vec<u64>,
-}
-
-impl Default for CoveredFields {
-    fn default() -> Self {
-        CoveredFields {
-            whole_transaction: false,
-            siacoin_inputs: Vec::new(),
-            siacoin_outputs: Vec::new(),
-            siafund_inputs: Vec::new(),
-            siafund_outputs: Vec::new(),
-            file_contracts: Vec::new(),
-            file_contract_revisions: Vec::new(),
-            storage_proofs: Vec::new(),
-            miner_fees: Vec::new(),
-            arbitrary_data: Vec::new(),
-            signatures: Vec::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize)]

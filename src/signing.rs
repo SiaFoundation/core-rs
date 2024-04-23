@@ -17,7 +17,7 @@ pub struct PublicKey([u8; 32]);
 impl Serialize for PublicKey {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            return serializer.serialize_str(&self.to_string());
+            serializer.serialize_str(&self.to_string())
         } else {
             serializer.serialize_bytes(&self.0)
         }
