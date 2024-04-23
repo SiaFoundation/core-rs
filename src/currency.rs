@@ -16,13 +16,17 @@ pub struct Currency(u128);
 // to decide on what to do about mixing v1 and v2 currencies.
 impl Serialize for Currency {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let currency_buf = self.to_be_bytes();
-        let i = currency_buf
-            .iter()
-            .enumerate()
-            .find(|&(_index, &value)| value != 0)
-            .map_or(16, |(index, _value)| index); // 16 if all bytes are 0
-        currency_buf[i..].serialize(serializer)
+        if serializer.is_human_readable() {
+            serializer.serialize_str(&self.to_string())
+        } else {
+            let currency_buf = self.to_be_bytes();
+            let i = currency_buf
+                .iter()
+                .enumerate()
+                .find(|&(_index, &value)| value != 0)
+                .map_or(16, |(index, _value)| index); // 16 if all bytes are 0
+            currency_buf[i..].serialize(serializer)
+        }
     }
 }
 
@@ -317,6 +321,11 @@ mod tests {
             assert_eq!(currency.to_string(), expected);
         }
     }*/
+
+    #[test]
+    fn test_json_serialize_currency() {
+        assert_eq!(serde_json::to_string(&Currency::new(1)).unwrap(), "\"1\"")
+    }
 
     #[test]
     fn test_from_str() {
