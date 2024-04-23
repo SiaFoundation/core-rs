@@ -16,7 +16,11 @@ pub struct PublicKey([u8; 32]);
 
 impl Serialize for PublicKey {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_bytes(&self.0)
+        if serializer.is_human_readable() {
+            return serializer.serialize_str(&self.to_string());
+        } else {
+            serializer.serialize_bytes(&self.0)
+        }
     }
 }
 
@@ -364,7 +368,20 @@ mod tests {
     use crate::*;
 
     #[test]
-    fn test_json_serialize_unlockkey() {
+    fn test_json_serialize_public_key() {
+        assert_eq!(
+            serde_json::to_string(&PublicKey::new([
+                0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda,
+                0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb,
+                0x1d, 0x1c, 0xe1, 0xb6,
+            ]))
+            .unwrap(),
+            "\"9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\""
+        );
+    }
+
+    #[test]
+    fn test_json_serialize_unlock_key() {
         assert_eq!(
             serde_json::to_string(
                 &UnlockKey::parse_string(
@@ -388,9 +405,10 @@ mod tests {
         assert_eq!(
             &encoding::to_bytes(&pk).unwrap(),
             &[
-                101, 100, 50, 53, 53, 49, 57, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0,
-                154, 172, 31, 251, 28, 253, 16, 121, 168, 198, 200, 123, 71, 218, 29, 86, 126, 53,
-                185, 114, 52, 153, 60, 40, 140, 26, 208, 219, 29, 28, 225, 182
+                0x65, 0x64, 0x32, 0x35, 0x35, 0x31, 0x39, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9a, 0xac, 0x1f, 0xfb,
+                0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda, 0x1d, 0x56, 0x7e, 0x35,
+                0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb, 0x1d, 0x1c, 0xe1, 0xb6
             ]
         );
     }
