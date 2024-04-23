@@ -551,6 +551,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_json_serialize_covered_fields() {
+        let mut cf = CoveredFields::default();
+        cf.siacoin_inputs.push(1);
+        cf.siacoin_outputs.push(2);
+        cf.siacoin_outputs.push(3);
+        assert_eq!(serde_json::to_string(&cf).unwrap(), "{\"wholeTransaction\":false,\"siacoinInputs\":[1],\"siacoinOutputs\":[2,3],\"siafundInputs\":[],\"siafundOutputs\":[],\"fileContracts\":[],\"fileContractRevisions\":[],\"storageProofs\":[],\"minerFees\":[],\"arbitraryData\":[],\"signatures\":[]}")
+    }
+
+    #[test]
     fn test_json_serialize_transaction_signature() {
         let txn_sig = TransactionSignature {
             parent_id: Hash256([0u8; 32]),
