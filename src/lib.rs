@@ -37,8 +37,18 @@ pub enum HexParseError {
     HexError(hex::FromHexError),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Hash256([u8; 32]);
+
+impl Serialize for Hash256 {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            serializer.serialize_str(&self.to_string())
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
 
 impl Hash256 {
     pub fn from_slice(data: [u8; 32]) -> Self {
@@ -74,5 +84,22 @@ impl fmt::Display for Hash256 {
 impl AsRef<[u8]> for Hash256 {
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_json_serialize_hash256() {
+        let hash = Hash256::parse_string(
+            "h:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6",
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_string(&hash).unwrap(),
+            "\"h:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\""
+        );
     }
 }
