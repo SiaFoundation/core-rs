@@ -276,6 +276,7 @@ impl SiaEncodable for StorageProof {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CoveredFields {
     pub whole_transaction: bool,
     pub siacoin_inputs: Vec<u64>,
@@ -290,8 +291,28 @@ pub struct CoveredFields {
     pub signatures: Vec<u64>,
 }
 
+impl Default for CoveredFields {
+    fn default() -> Self {
+        CoveredFields {
+            whole_transaction: false,
+            siacoin_inputs: Vec::new(),
+            siacoin_outputs: Vec::new(),
+            siafund_inputs: Vec::new(),
+            siafund_outputs: Vec::new(),
+            file_contracts: Vec::new(),
+            file_contract_revisions: Vec::new(),
+            storage_proofs: Vec::new(),
+            miner_fees: Vec::new(),
+            arbitrary_data: Vec::new(),
+            signatures: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TransactionSignature {
+    #[serde(rename = "parentID")]
     pub parent_id: Hash256,
     pub public_key_index: u64,
     pub timelock: u64,
@@ -528,6 +549,18 @@ impl SiaEncodable for Transaction {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_json_serialize_transaction_signature() {
+        let txn_sig = TransactionSignature {
+            parent_id: Hash256([0u8; 32]),
+            public_key_index: 1,
+            timelock: 2,
+            covered_fields: CoveredFields::default(),
+            signature: Signature::new([0u8; 64]),
+        };
+        assert_eq!(serde_json::to_string(&txn_sig).unwrap(), "{\"parentID\":\"h:0000000000000000000000000000000000000000000000000000000000000000\",\"publicKeyIndex\":1,\"timelock\":2,\"coveredFields\":{\"wholeTransaction\":false,\"siacoinInputs\":[],\"siacoinOutputs\":[],\"siafundInputs\":[],\"siafundOutputs\":[],\"fileContracts\":[],\"fileContractRevisions\":[],\"storageProofs\":[],\"minerFees\":[],\"arbitraryData\":[],\"signatures\":[]},\"signature\":\"sig:00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}")
+    }
 
     #[test]
     fn test_transaction_id() {
