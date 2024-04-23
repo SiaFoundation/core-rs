@@ -117,6 +117,7 @@ impl Serialize for Algorithm {
 
 // specifies the conditions for spending an output or revising a file contract.
 #[derive(Debug, PartialEq, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UnlockConditions {
     pub timelock: u64,
     pub public_keys: Vec<UnlockKey>,
@@ -234,6 +235,23 @@ mod tests {
             serde_json::to_string(&address).unwrap(),
             "\"addr:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0\""
         )
+    }
+
+    #[test]
+    fn test_json_serialize_unlock_conditions() {
+        let uc = UnlockConditions::new(
+            123,
+            vec![UnlockKey::new(
+                Algorithm::ED25519,
+                PublicKey::new([
+                    0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47,
+                    0xda, 0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a,
+                    0xd0, 0xdb, 0x1d, 0x1c, 0xe1, 0xb6,
+                ]),
+            )],
+            1,
+        );
+        assert_eq!(serde_json::to_string(&uc).unwrap(), "{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"requiredSignatures\":1}")
     }
 
     #[test]
