@@ -1,17 +1,34 @@
 use core::fmt;
-use std::io::{Error, Write};
 use std::time::SystemTime;
 
 use crate::consensus::ChainIndex;
-use crate::encoding::to_writer;
 use crate::transactions::{CoveredFields, Transaction};
 use crate::{Algorithm, HexParseError, SiaEncodable};
 use blake2b_simd::Params;
 use ed25519_dalek::{Signature as ED25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use serde::ser::SerializeStruct;
+use serde::Serialize;
+use serde_json::to_writer;
 
 /// An ed25519 public key that can be used to verify a signature
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct PublicKey([u8; 32]);
+
+impl Serialize for PublicKey {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            serializer.serialize_str(&self.to_string())
+        } else {
+            serializer.serialize_bytes(&self.0)
+        }
+    }
+}
+
+impl fmt::Display for PublicKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        hex::encode(self.0).fmt(f)
+    }
+}
 
 impl PublicKey {
     pub fn new(buf: [u8; 32]) -> Self {
@@ -81,6 +98,25 @@ pub struct UnlockKey {
     public_key: PublicKey,
 }
 
+impl Serialize for UnlockKey {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            serializer.serialize_str(&self.to_string())
+        } else {
+            let mut s = serializer.serialize_struct("UnlockKey", 2)?;
+            s.serialize_field("algorithm", &self.algorithm)?;
+            s.serialize_field("public_key", &self.public_key)?;
+            s.end()
+        }
+    }
+}
+
+impl fmt::Display for UnlockKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:{}", self.algorithm, self.public_key)
+    }
+}
+
 impl UnlockKey {
     /// Creates a new UnlockKey
     pub fn new(algorithm: Algorithm, public_key: PublicKey) -> UnlockKey {
@@ -113,25 +149,6 @@ impl UnlockKey {
     }
 }
 
-impl fmt::Display for UnlockKey {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}:{}",
-            self.algorithm,
-            hex::encode(self.public_key.as_ref())
-        )
-    }
-}
-
-impl SiaEncodable for UnlockKey {
-    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
-        to_writer(w, &self.algorithm).unwrap(); // TODO: handle error
-        w.write_all(&32_u64.to_le_bytes())?;
-        w.write_all(self.public_key.as_ref())
-    }
-}
-
 impl Drop for PrivateKey {
     fn drop(&mut self) {
         // Zero out the private key
@@ -153,6 +170,16 @@ pub struct NetworkHardforks {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Signature([u8; 64]);
+
+impl Serialize for Signature {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            serializer.serialize_str(&self.to_string())
+        } else {
+            serializer.serialize_bytes(&self.0) // prefixed with length
+        }
+    }
+}
 
 impl Signature {
     pub fn new(sig: [u8; 64]) -> Self {
@@ -183,13 +210,6 @@ impl Signature {
 impl AsRef<[u8; 64]> for Signature {
     fn as_ref(&self) -> &[u8; 64] {
         &self.0
-    }
-}
-
-impl SiaEncodable for Signature {
-    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
-        w.write_all(&(self.0.len() as u64).to_le_bytes())?;
-        w.write_all(&self.0)
     }
 }
 
@@ -290,8 +310,8 @@ impl SigningState {
         state.update(&public_key_index.to_le_bytes());
         state.update(&timelock.to_le_bytes());
 
-        for i in covered_sigs.into_iter() {
-            txn.signatures[i as usize].encode(&mut state).unwrap();
+        for i in covered_sigs.iter() {
+            to_writer(&mut state, i).unwrap();
         }
 
         state.finalize().as_bytes().try_into().unwrap()
@@ -350,6 +370,66 @@ impl SigningState {
 mod tests {
     use super::*;
     use crate::*;
+
+    #[test]
+    fn test_json_serialize_public_key() {
+        assert_eq!(
+            serde_json::to_string(&PublicKey::new([
+                0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda,
+                0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb,
+                0x1d, 0x1c, 0xe1, 0xb6,
+            ]))
+            .unwrap(),
+            "\"9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\""
+        );
+    }
+
+    #[test]
+    fn test_json_serialize_unlock_key() {
+        assert_eq!(
+            serde_json::to_string(
+                &UnlockKey::parse_string(
+                    "ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6"
+                )
+                .unwrap()
+            )
+            .unwrap(),
+            "\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\""
+        );
+    }
+
+    #[test]
+    fn test_json_serialize_signature() {
+        assert_eq!(
+            serde_json::to_string(
+                &Signature::parse_string(
+                    "sig:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b69aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6"
+                )
+                .unwrap()
+            )
+            .unwrap(),
+            "\"sig:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b69aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\""
+        );
+    }
+
+    #[test]
+    fn test_serialize_public_key() {
+        let key: [u8; 32] = [
+            0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda,
+            0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb,
+            0x1d, 0x1c, 0xe1, 0xb6,
+        ];
+        let pk = UnlockKey::new(Algorithm::ED25519, PublicKey::new(key));
+        assert_eq!(
+            &encoding::to_bytes(&pk).unwrap(),
+            &[
+                0x65, 0x64, 0x32, 0x35, 0x35, 0x31, 0x39, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9a, 0xac, 0x1f, 0xfb,
+                0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda, 0x1d, 0x56, 0x7e, 0x35,
+                0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb, 0x1d, 0x1c, 0xe1, 0xb6
+            ]
+        );
+    }
 
     #[test]
     fn test_whole_sig_hash() {
