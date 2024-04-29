@@ -263,16 +263,25 @@ impl SiaEncodable for StorageProof {
 #[serde(rename_all = "camelCase")]
 pub struct CoveredFields {
     pub whole_transaction: bool,
-    pub siacoin_inputs: Vec<u64>,
-    pub siacoin_outputs: Vec<u64>,
-    pub siafund_inputs: Vec<u64>,
-    pub siafund_outputs: Vec<u64>,
-    pub file_contracts: Vec<u64>,
-    pub file_contract_revisions: Vec<u64>,
-    pub storage_proofs: Vec<u64>,
-    pub miner_fees: Vec<u64>,
-    pub arbitrary_data: Vec<u64>,
-    pub signatures: Vec<u64>,
+    pub siacoin_inputs: Vec<usize>,
+    pub siacoin_outputs: Vec<usize>,
+    pub siafund_inputs: Vec<usize>,
+    pub siafund_outputs: Vec<usize>,
+    pub file_contracts: Vec<usize>,
+    pub file_contract_revisions: Vec<usize>,
+    pub storage_proofs: Vec<usize>,
+    pub miner_fees: Vec<usize>,
+    pub arbitrary_data: Vec<usize>,
+    pub signatures: Vec<usize>,
+}
+
+impl CoveredFields {
+    pub fn whole_transaction() -> Self {
+        CoveredFields {
+            whole_transaction: true,
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -525,6 +534,35 @@ mod tests {
         cf.siacoin_outputs.push(2);
         cf.siacoin_outputs.push(3);
         assert_eq!(serde_json::to_string(&cf).unwrap(), "{\"wholeTransaction\":false,\"siacoinInputs\":[1],\"siacoinOutputs\":[2,3],\"siafundInputs\":[],\"siafundOutputs\":[],\"fileContracts\":[],\"fileContractRevisions\":[],\"storageProofs\":[],\"minerFees\":[],\"arbitraryData\":[],\"signatures\":[]}")
+    }
+
+    #[test]
+    fn test_serialize_covered_fields() {
+        let test_cases = vec![
+            (
+                CoveredFields::whole_transaction(),
+                vec![
+                    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0,
+                ],
+            ),
+            (
+                CoveredFields::default(),
+                vec![
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0,
+                ],
+            ),
+        ];
+
+        for (cf, expected) in test_cases {
+            let result = to_bytes(&cf).expect("failed to serialize covered fields");
+            assert_eq!(result, expected);
+        }
     }
 
     #[test]

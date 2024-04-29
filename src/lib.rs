@@ -51,7 +51,7 @@ impl Serialize for Hash256 {
 }
 
 impl Hash256 {
-    pub fn from_slice(data: [u8; 32]) -> Self {
+    pub fn new(data: [u8; 32]) -> Self {
         Hash256(data)
     }
 
@@ -84,6 +84,14 @@ impl fmt::Display for Hash256 {
 impl AsRef<[u8]> for Hash256 {
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+impl From<&[u8]> for Hash256 {
+    fn from(value: &[u8]) -> Self {
+        let mut h = [0; 32];
+        h.copy_from_slice(value);
+        Self(h)
     }
 }
 
