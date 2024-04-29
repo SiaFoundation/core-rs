@@ -70,18 +70,10 @@ impl SiaEncodable for SiacoinInput {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SiacoinOutput {
-    pub address: Address,
     pub value: Currency,
-}
-
-impl SiaEncodable for SiacoinOutput {
-    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
-        self.value.encode(w)?;
-        to_writer(w, &self.address).unwrap(); // TODO: handle error
-        Ok(())
-    }
+    pub address: Address,
 }
 
 #[derive(Debug, Clone)]
@@ -136,19 +128,11 @@ impl SiaEncodable for SiafundInput {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SiafundOutput {
-    pub address: Address,
     pub value: Currency,
+    pub address: Address,
     pub claim_start: Currency,
-}
-
-impl SiaEncodable for SiafundOutput {
-    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error> {
-        self.value.encode(w)?;
-        to_writer(w, &self.address).unwrap(); // TODO: handle error
-        self.claim_start.encode(w)
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -206,14 +190,14 @@ impl SiaEncodable for FileContract {
         w.write_all(&self.file_merkle_root.0)?;
         w.write_all(&self.window_start.to_le_bytes())?;
         w.write_all(&self.window_end.to_le_bytes())?;
-        self.payout.encode(w)?;
+        to_writer(w, &self.payout).unwrap();
         w.write_all(&(self.valid_proof_outputs.len() as u64).to_le_bytes())?;
         for output in &self.valid_proof_outputs {
-            output.encode(w)?;
+            to_writer(w, output).unwrap();
         }
         w.write_all(&(self.missed_proof_outputs.len() as u64).to_le_bytes())?;
         for output in &self.missed_proof_outputs {
-            output.encode(w)?;
+            to_writer(w, output).unwrap();
         }
         to_writer(w, &self.unlock_hash).unwrap(); // TODO: handle error
         w.write_all(&self.revision_number.to_le_bytes())
@@ -245,11 +229,11 @@ impl SiaEncodable for FileContractRevision {
         w.write_all(&self.window_end.to_le_bytes())?;
         w.write_all(&(self.valid_proof_outputs.len() as u64).to_le_bytes())?;
         for output in &self.valid_proof_outputs {
-            output.encode(w)?;
+            to_writer(w, output).unwrap();
         }
         w.write_all(&(self.missed_proof_outputs.len() as u64).to_le_bytes())?;
         for output in &self.missed_proof_outputs {
-            output.encode(w)?;
+            to_writer(w, output).unwrap();
         }
         to_writer(w, &self.unlock_hash).unwrap(); // TODO: handle error
         Ok(())
@@ -353,7 +337,7 @@ impl Transaction {
 
         buf.extend_from_slice(&(self.siacoin_outputs.len() as u64).to_le_bytes());
         for output in &self.siacoin_outputs {
-            output.encode(&mut buf).unwrap();
+            to_writer(&mut buf, output).unwrap();
         }
 
         buf.extend_from_slice(&(self.file_contracts.len() as u64).to_le_bytes());
@@ -378,12 +362,12 @@ impl Transaction {
 
         buf.extend_from_slice(&(self.siafund_outputs.len() as u64).to_le_bytes());
         for output in &self.siafund_outputs {
-            output.encode(&mut buf).unwrap();
+            to_writer(&mut buf, output).unwrap();
         }
 
         buf.extend_from_slice(&(self.miner_fees.len() as u64).to_le_bytes());
         for fee in &self.miner_fees {
-            fee.encode(&mut buf).unwrap();
+            to_writer(&mut buf, fee).unwrap();
         }
 
         buf.extend_from_slice(&(self.arbitrary_data.len() as u64).to_le_bytes());
@@ -402,7 +386,7 @@ impl Transaction {
 
         state.update(&(self.siacoin_outputs.len() as u64).to_le_bytes());
         for output in self.siacoin_outputs.iter() {
-            output.encode(state).unwrap();
+            to_writer(state, output).unwrap();
         }
 
         state.update(&(self.file_contracts.len() as u64).to_le_bytes());
@@ -427,12 +411,12 @@ impl Transaction {
 
         state.update(&(self.siafund_outputs.len() as u64).to_le_bytes());
         for output in self.siafund_outputs.iter() {
-            output.encode(state).unwrap();
+            to_writer(state, output).unwrap();
         }
 
         state.update(&(self.miner_fees.len() as u64).to_le_bytes());
         for fee in self.miner_fees.iter() {
-            fee.encode(state).unwrap();
+            to_writer(state, fee).unwrap();
         }
 
         state.update(&(self.arbitrary_data.len() as u64).to_le_bytes());
@@ -492,7 +476,7 @@ impl SiaEncodable for Transaction {
         }
         w.write_all(&(self.siacoin_outputs.len() as u64).to_le_bytes())?;
         for output in &self.siacoin_outputs {
-            output.encode(w)?;
+            to_writer(w, output).unwrap();
         }
         w.write_all(&(self.file_contracts.len() as u64).to_le_bytes())?;
         for file_contract in &self.file_contracts {
@@ -512,11 +496,11 @@ impl SiaEncodable for Transaction {
         }
         w.write_all(&(self.siafund_outputs.len() as u64).to_le_bytes())?;
         for output in &self.siafund_outputs {
-            output.encode(w)?;
+            to_writer(w, output).unwrap();
         }
         w.write_all(&(self.miner_fees.len() as u64).to_le_bytes())?;
         for fee in &self.miner_fees {
-            fee.encode(w)?;
+            to_writer(w, fee).unwrap();
         }
         w.write_all(&(self.arbitrary_data.len() as u64).to_le_bytes())?;
         for data in &self.arbitrary_data {
@@ -530,6 +514,8 @@ impl SiaEncodable for Transaction {
 
 #[cfg(test)]
 mod tests {
+    use crate::encoding::to_bytes;
+
     use super::*;
 
     #[test]
@@ -560,6 +546,42 @@ mod tests {
             txn.id().to_string(),
             "txn:b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24"
         )
+    }
+
+    #[test]
+    fn test_siacoin_output() {
+        let output = SiacoinOutput {
+            value: Currency::new(67856467336433871),
+            address: Address::parse_string(
+                "addr:000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69",
+            )
+            .unwrap(),
+        };
+        let result = to_bytes(&output).expect("failed to serialize output");
+        let expected: [u8; 47] = [
+            7, 0, 0, 0, 0, 0, 0, 0, 241, 19, 24, 247, 77, 16, 207, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_siafund_output() {
+        let output = SiafundOutput {
+            claim_start: Currency::new(123),
+            value: Currency::new(67856467336433871),
+            address: Address::parse_string(
+                "addr:000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69",
+            )
+            .unwrap(),
+        };
+        let result = to_bytes(&output).expect("failed to serialize output");
+        let expected: [u8; 56] = [
+            7, 0, 0, 0, 0, 0, 0, 0, 241, 19, 24, 247, 77, 16, 207, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+            123,
+        ];
+        assert_eq!(result, expected);
     }
 
     #[test]

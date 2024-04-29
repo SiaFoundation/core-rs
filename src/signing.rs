@@ -266,7 +266,7 @@ impl SigningState {
 
         state.update(&(txn.siacoin_outputs.len() as u64).to_le_bytes());
         for output in txn.siacoin_outputs.iter() {
-            output.encode(&mut state).unwrap();
+            to_writer(&mut state, output).unwrap();
         }
 
         state.update(&(txn.file_contracts.len() as u64).to_le_bytes());
@@ -292,12 +292,12 @@ impl SigningState {
 
         state.update(&(txn.siafund_outputs.len() as u64).to_le_bytes());
         for output in txn.siafund_outputs.iter() {
-            output.encode(&mut state).unwrap();
+            to_writer(&mut state, output).unwrap();
         }
 
         state.update(&(txn.miner_fees.len() as u64).to_le_bytes());
         for fee in txn.miner_fees.iter() {
-            fee.encode(&mut state).unwrap();
+            to_writer(&mut state, &fee).unwrap();
         }
 
         state.update(&(txn.arbitrary_data.len() as u64).to_le_bytes());
@@ -326,7 +326,7 @@ impl SigningState {
         }
 
         for i in covered_fields.siacoin_outputs.into_iter() {
-            txn.siacoin_outputs[i as usize].encode(&mut state).unwrap();
+            to_writer(&mut state, &txn.siacoin_outputs[i as usize]).unwrap();
         }
 
         for i in covered_fields.file_contracts.into_iter() {
@@ -349,12 +349,12 @@ impl SigningState {
         }
 
         for i in covered_fields.siafund_outputs.into_iter() {
-            txn.siafund_outputs[i as usize].encode(&mut state).unwrap();
+            to_writer(&mut state, &txn.siafund_outputs[i as usize]).unwrap();
             state.update(self.replay_prefix());
         }
 
         for i in covered_fields.miner_fees.into_iter() {
-            txn.miner_fees[i as usize].encode(&mut state).unwrap();
+            to_writer(&mut state, &txn.miner_fees[i as usize]).unwrap();
         }
 
         for i in covered_fields.arbitrary_data.into_iter() {
