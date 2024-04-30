@@ -1,14 +1,14 @@
 use blake2b_simd::Params;
 use core::{fmt, slice::Iter};
-use serde_json::to_writer;
+use serde::ser::SerializeTuple;
+use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::{
-    io::{Error as IOError, Write},
-    time::{self, SystemTime},
-};
+use std::time::{self, SystemTime};
 use thiserror::Error;
 
-use crate::{Address, Hash256, PublicKey, SiaEncodable, Signature, SigningState, UnlockConditions};
+use crate::{
+    encoding::to_writer, Address, Hash256, PublicKey, Signature, SigningState, UnlockConditions,
+};
 
 #[derive(Debug, PartialEq, Error)]
 pub enum ValidationError {
@@ -126,11 +126,9 @@ impl SpendPolicy {
             for policy in of {
                 opaque.push(SpendPolicy::Opaque(policy.address()))
             }
-            SpendPolicy::Threshold(*n, opaque)
-                .encode(&mut state)
-                .unwrap();
+            to_writer(&mut state, &SpendPolicy::Threshold(*n, opaque)).unwrap();
         } else {
-            self.encode(&mut state).unwrap();
+            to_writer(&mut state, self).unwrap();
         }
         Address::from(state.finalize().as_bytes())
     }
@@ -238,40 +236,46 @@ impl SpendPolicy {
     /// Encode the policy to a writer. This is used by the SiaEncodable trait to
     /// handle recursive threshold policies. The version byte is only written
     /// for the top-level policy.
-    fn encode_policy<W: Write>(&self, w: &mut W) -> Result<(), IOError> {
-        w.write_all(&[self.type_prefix()])?; // type prefix
+    fn serialize_policy<S: serde::ser::SerializeTuple>(&self, s: &mut S) -> Result<(), S::Error> {
+        s.serialize_element(&self.type_prefix())?; // type prefix
         match self {
-            SpendPolicy::Above(height) => w.write_all(&height.to_le_bytes()),
-            SpendPolicy::After(time) => w.write_all(
-                &time
-                    .duration_since(time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
-                    .to_le_bytes(),
-            ),
-            SpendPolicy::PublicKey(pk) => w.write_all(pk.as_ref()),
-            SpendPolicy::Hash(hash) => w.write_all(hash),
+            SpendPolicy::Above(height) => s.serialize_element(height),
+            SpendPolicy::After(time) => {
+                s.serialize_element(&time.duration_since(time::UNIX_EPOCH).unwrap().as_secs())
+            }
+            SpendPolicy::PublicKey(pk) => {
+                let mut arr: [u8; 32] = [0; 32];
+                arr.copy_from_slice(pk.as_ref());
+                s.serialize_element(&arr)
+            }
+            SpendPolicy::Hash(hash) => s.serialize_element(hash),
             SpendPolicy::Threshold(n, policies) => {
-                w.write_all(&[*n, policies.len() as u8])?;
+                let prefix = [*n, policies.len() as u8];
+                s.serialize_element(&prefix)?;
                 for policy in policies {
-                    policy.encode_policy(w)?;
+                    policy.serialize_policy(s)?;
                 }
                 Ok(())
             }
-            SpendPolicy::Opaque(addr) => w.write_all(addr.as_ref()),
+            SpendPolicy::Opaque(addr) => s.serialize_element(addr),
             #[allow(deprecated)]
-            SpendPolicy::UnlockConditions(uc) => {
-                to_writer(w, uc).unwrap();
-                Ok(())
-            }
+            SpendPolicy::UnlockConditions(uc) => s.serialize_element(uc),
         }
     }
 }
 
-impl SiaEncodable for SpendPolicy {
-    fn encode<W: Write>(&self, w: &mut W) -> Result<(), IOError> {
-        w.write_all(&[1])?; // version
-        self.encode_policy(w)
+impl Serialize for SpendPolicy {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            serializer.serialize_str(&self.to_string())
+        } else {
+            // unknown length since policie are recursive and need custom
+            // serialize/deserialize implementations anyway.
+            let mut s = serializer.serialize_tuple(0)?;
+            s.serialize_element(&1u8)?; // version
+            self.serialize_policy(&mut s)?;
+            s.end()
+        }
     }
 }
 
