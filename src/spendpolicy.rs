@@ -508,8 +508,8 @@ mod tests {
                 let mut seed = [0; 32];
                 thread_rng().fill(&mut seed);
                 let pk = PrivateKey::from_seed(&seed);
-                let mut sig_hash = [0; 32];
-                thread_rng().fill(&mut sig_hash);
+                let mut sig_hash = Hash256::default();
+                thread_rng().fill(&mut sig_hash.0);
 
                 PolicyTest {
                     policy: SpendPolicy::PublicKey(pk.public_key()),
@@ -521,8 +521,8 @@ mod tests {
                         median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
                         hardforks: NetworkHardforks::default(),
                     },
-                    hash: Hash256(sig_hash),
-                    signatures: vec![pk.sign_hash(&sig_hash)],
+                    hash: sig_hash,
+                    signatures: vec![pk.sign(sig_hash.as_ref())],
                     preimages: vec![],
                     result: Ok(()),
                 }
@@ -531,8 +531,8 @@ mod tests {
                 let mut seed = [0; 32];
                 thread_rng().fill(&mut seed);
                 let pk = PrivateKey::from_seed(&seed);
-                let mut sig_hash = [0; 32];
-                thread_rng().fill(&mut sig_hash);
+                let mut sig_hash = Hash256::default();
+                thread_rng().fill(&mut sig_hash.0);
 
                 PolicyTest {
                     policy: SpendPolicy::Threshold(
@@ -550,8 +550,8 @@ mod tests {
                         median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
                         hardforks: NetworkHardforks::default(),
                     },
-                    hash: Hash256(sig_hash),
-                    signatures: vec![pk.sign_hash(&sig_hash)],
+                    hash: sig_hash,
+                    signatures: vec![pk.sign(sig_hash.as_ref())],
                     preimages: vec![],
                     result: Err(ValidationError::ThresholdNotMet),
                 }
@@ -560,8 +560,8 @@ mod tests {
                 let mut seed = [0; 32];
                 thread_rng().fill(&mut seed);
                 let pk = PrivateKey::from_seed(&seed);
-                let mut sig_hash = [0; 32];
-                thread_rng().fill(&mut sig_hash);
+                let mut sig_hash = Hash256::default();
+                thread_rng().fill(&mut sig_hash.0);
 
                 PolicyTest {
                     policy: SpendPolicy::Threshold(
@@ -579,7 +579,7 @@ mod tests {
                         median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
                         hardforks: NetworkHardforks::default(),
                     },
-                    hash: Hash256(sig_hash),
+                    hash: sig_hash,
                     signatures: vec![Signature::new([0; 64])],
                     preimages: vec![],
                     result: Err(ValidationError::ThresholdNotMet),
@@ -589,8 +589,8 @@ mod tests {
                 let mut seed = [0; 32];
                 thread_rng().fill(&mut seed);
                 let pk = PrivateKey::from_seed(&seed);
-                let mut sig_hash = [0; 32];
-                thread_rng().fill(&mut sig_hash);
+                let mut sig_hash = Hash256::default();
+                thread_rng().fill(&mut sig_hash.0);
 
                 PolicyTest {
                     policy: SpendPolicy::Threshold(
@@ -608,8 +608,8 @@ mod tests {
                         median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
                         hardforks: NetworkHardforks::default(),
                     },
-                    hash: Hash256(sig_hash),
-                    signatures: vec![pk.sign_hash(&sig_hash)],
+                    hash: sig_hash,
+                    signatures: vec![pk.sign(sig_hash.as_ref())],
                     preimages: vec![],
                     result: Ok(()),
                 }
@@ -618,8 +618,36 @@ mod tests {
                 let mut seed = [0; 32];
                 thread_rng().fill(&mut seed);
                 let pk = PrivateKey::from_seed(&seed);
-                let mut sig_hash = [0; 32];
-                thread_rng().fill(&mut sig_hash);
+                let mut sig_hash = Hash256::default();
+                thread_rng().fill(&mut sig_hash.0);
+                PolicyTest {
+                    policy: SpendPolicy::Threshold(
+                        1,
+                        vec![
+                            SpendPolicy::PublicKey(pk.public_key()),
+                            SpendPolicy::Opaque(Address::new([0; 32])),
+                        ],
+                    ),
+                    state: SigningState {
+                        index: ChainIndex {
+                            height: 100,
+                            id: [0; 32],
+                        },
+                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
+                        hardforks: NetworkHardforks::default(),
+                    },
+                    hash: sig_hash,
+                    signatures: vec![pk.sign(sig_hash.as_ref())],
+                    preimages: vec![],
+                    result: Ok(()),
+                }
+            },
+            {
+                let mut seed = [0; 32];
+                thread_rng().fill(&mut seed);
+                let pk = PrivateKey::from_seed(&seed);
+                let mut sig_hash = Hash256::default();
+                thread_rng().fill(&mut sig_hash.0);
 
                 PolicyTest {
                     policy: SpendPolicy::Threshold(
@@ -637,36 +665,7 @@ mod tests {
                         median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
                         hardforks: NetworkHardforks::default(),
                     },
-                    hash: Hash256(sig_hash),
-                    signatures: vec![pk.sign_hash(&sig_hash)],
-                    preimages: vec![],
-                    result: Ok(()),
-                }
-            },
-            {
-                let mut seed = [0; 32];
-                thread_rng().fill(&mut seed);
-                let pk = PrivateKey::from_seed(&seed);
-                let mut sig_hash = [0; 32];
-                thread_rng().fill(&mut sig_hash);
-
-                PolicyTest {
-                    policy: SpendPolicy::Threshold(
-                        1,
-                        vec![
-                            SpendPolicy::PublicKey(pk.public_key()),
-                            SpendPolicy::Opaque(Address::new([0; 32])),
-                        ],
-                    ),
-                    state: SigningState {
-                        index: ChainIndex {
-                            height: 100,
-                            id: [0; 32],
-                        },
-                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
-                        hardforks: NetworkHardforks::default(),
-                    },
-                    hash: Hash256(sig_hash),
+                    hash: sig_hash,
                     signatures: vec![],
                     preimages: vec![],
                     result: Err(ValidationError::ThresholdNotMet),
