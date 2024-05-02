@@ -1,9 +1,4 @@
 use core::fmt;
-use std::io::{Error, Write};
-
-pub trait SiaEncodable {
-    fn encode<W: Write>(&self, w: &mut W) -> Result<(), Error>;
-}
 
 pub mod address;
 pub mod consensus;

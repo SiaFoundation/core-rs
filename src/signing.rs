@@ -4,7 +4,7 @@ use std::time::SystemTime;
 use crate::consensus::ChainIndex;
 use crate::encoding::{to_writer, SerializeError};
 use crate::transactions::{CoveredFields, Transaction};
-use crate::{Algorithm, Hash256, HexParseError, SiaEncodable};
+use crate::{Algorithm, Hash256, HexParseError};
 use blake2b_simd::Params;
 use ed25519_dalek::{Signature as ED25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::ser::SerializeStruct;
@@ -268,7 +268,7 @@ impl SigningState {
         state.update(&(txn.siacoin_inputs.len() as u64).to_le_bytes());
         for input in txn.siacoin_inputs.iter() {
             state.update(self.replay_prefix());
-            input.encode(&mut state).unwrap();
+            to_writer(&mut state, input)?;
         }
 
         state.update(&(txn.siacoin_outputs.len() as u64).to_le_bytes());
@@ -278,23 +278,23 @@ impl SigningState {
 
         state.update(&(txn.file_contracts.len() as u64).to_le_bytes());
         for file_contract in txn.file_contracts.iter() {
-            file_contract.encode(&mut state).unwrap();
+            to_writer(&mut state, file_contract)?;
         }
 
         state.update(&(txn.file_contract_revisions.len() as u64).to_le_bytes());
         for file_contract_revision in txn.file_contract_revisions.iter() {
-            file_contract_revision.encode(&mut state).unwrap();
+            to_writer(&mut state, file_contract_revision)?;
         }
 
         state.update(&(txn.storage_proofs.len() as u64).to_le_bytes());
         for storage_proof in txn.storage_proofs.iter() {
-            storage_proof.encode(&mut state).unwrap();
+            to_writer(&mut state, storage_proof).unwrap();
         }
 
         state.update(&(txn.siafund_inputs.len() as u64).to_le_bytes());
         for input in txn.siafund_inputs.iter() {
             state.update(self.replay_prefix());
-            input.encode(&mut state).unwrap();
+            to_writer(&mut state, input).unwrap();
         }
 
         state.update(&(txn.siafund_outputs.len() as u64).to_le_bytes());
@@ -333,7 +333,7 @@ impl SigningState {
 
         for i in covered_fields.siacoin_inputs.into_iter() {
             state.update(self.replay_prefix());
-            txn.siacoin_inputs[i].encode(&mut state).unwrap();
+            to_writer(&mut state, &txn.siacoin_inputs[i])?;
         }
 
         for i in covered_fields.siacoin_outputs.into_iter() {
@@ -341,25 +341,25 @@ impl SigningState {
         }
 
         for i in covered_fields.file_contracts.into_iter() {
-            txn.file_contracts[i].encode(&mut state).unwrap();
+            to_writer(&mut state, &txn.file_contracts[i])?;
         }
 
         for i in covered_fields.file_contract_revisions.into_iter() {
-            txn.file_contract_revisions[i].encode(&mut state).unwrap();
+            to_writer(&mut state, &txn.file_contract_revisions[i])?;
         }
 
         for i in covered_fields.storage_proofs.into_iter() {
-            txn.storage_proofs[i].encode(&mut state).unwrap();
+            to_writer(&mut state, &txn.storage_proofs[i])?;
         }
 
         for i in covered_fields.siafund_inputs.into_iter() {
-            txn.siafund_inputs[i].encode(&mut state).unwrap();
+            to_writer(&mut state, &txn.siafund_inputs[i])?;
             state.update(self.replay_prefix());
         }
 
         for i in covered_fields.siafund_outputs.into_iter() {
-            to_writer(&mut state, &txn.siafund_outputs[i])?;
             state.update(self.replay_prefix());
+            to_writer(&mut state, &txn.siafund_outputs[i])?;
         }
 
         for i in covered_fields.miner_fees.into_iter() {
