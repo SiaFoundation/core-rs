@@ -31,6 +31,9 @@ impl fmt::Display for Specifier {
     }
 }
 
+// implement the `From` trait for the `Specifier` struct to allow for creating a
+// Specifier from any type that can be converted to a slice of bytes such as
+// 'String', '&str' or byte arrays.
 impl<T: AsRef<[u8]>> From<T> for Specifier {
     fn from(src: T) -> Self {
         let src = src.as_ref();
