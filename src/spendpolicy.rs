@@ -233,9 +233,9 @@ impl SpendPolicy {
         }
     }
 
-    /// Encode the policy to a writer. This is used by the SiaEncodable trait to
-    /// handle recursive threshold policies. The version byte is only written
-    /// for the top-level policy.
+    /// Encode the policy to a writer. This is used to handle recursive
+    /// threshold policies. The version byte is only written for the top-level
+    /// policy.
     fn serialize_policy<S: serde::ser::SerializeTuple>(&self, s: &mut S) -> Result<(), S::Error> {
         s.serialize_element(&self.type_prefix())?; // type prefix
         match self {

@@ -1,5 +1,5 @@
 use serde::{
-    ser::{self, SerializeSeq},
+    ser::{self, SerializeTuple},
     Serialize,
 };
 use std::fmt::Display;
@@ -19,6 +19,22 @@ pub enum Error {
 
     #[error("Failed to write to io::write: {0}")]
     IO(#[from] io::Error),
+}
+
+// Helper function to serialize array of fixed size. Serde only implements
+// Serialize for arrays up to 32 elements in size. The reason being that Rust
+// didn't have const generics back then and now they can't easily upgrade
+// without breaking code.
+pub fn serialize_array<const N: usize, S, T>(t: &[T; N], serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: ser::Serializer,
+    T: Serialize,
+{
+    let mut ser_tuple = serializer.serialize_tuple(N)?;
+    for elem in t {
+        ser_tuple.serialize_element(elem)?;
+    }
+    ser_tuple.end()
 }
 
 // Implement ser::Error for Error
@@ -147,9 +163,9 @@ impl<W: io::Write> ser::Serializer for &mut Serializer<'_, W> {
     }
 
     // 'some' is serialized by writing a '1' byte followed by the value
-    fn serialize_some<T: ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error>
+    fn serialize_some<T>(self, value: &T) -> Result<Self::Ok, Self::Error>
     where
-        T: Serialize,
+        T: Serialize + ?Sized,
     {
         self.writer.write_all(&[1])?;
         value.serialize(self)
@@ -177,19 +193,19 @@ impl<W: io::Write> ser::Serializer for &mut Serializer<'_, W> {
 
     // As is done here, serializers are encouraged to treat newtype structs as
     // insignificant wrappers around the data they contain
-    fn serialize_newtype_struct<T: ?Sized>(
+    fn serialize_newtype_struct<T>(
         self,
         _name: &'static str,
         value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
-        T: Serialize,
+        T: Serialize + ?Sized,
     {
         value.serialize(self)
     }
 
     // newtype_variants are not supported
-    fn serialize_newtype_variant<T: ?Sized>(
+    fn serialize_newtype_variant<T>(
         self,
         _name: &'static str,
         _variant_index: u32,
@@ -197,7 +213,7 @@ impl<W: io::Write> ser::Serializer for &mut Serializer<'_, W> {
         _value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
-        T: Serialize,
+        T: Serialize + ?Sized,
     {
         Err(Error::UnsupportedType("newtype_variant"))
     }
