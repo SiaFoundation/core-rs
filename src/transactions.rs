@@ -1,19 +1,11 @@
-use core::fmt;
-
 use crate::encoding::{serialize_array, to_writer};
+use crate::specifier::{specifier, Specifier};
 use crate::Currency;
 use crate::Signature;
-use crate::{Address, UnlockConditions};
-use crate::{Hash256, HexParseError};
+use crate::{Address, Hash256, HexParseError, UnlockConditions};
 use blake2b_simd::{Params, State};
+use core::fmt;
 use serde::Serialize;
-
-const SIACOIN_OUTPUT_ID_PREFIX: [u8; 16] = [
-    b's', b'i', b'a', b'c', b'o', b'i', b'n', b' ', b'o', b'u', b't', b'p', b'u', b't', 0, 0,
-];
-const SIAFUND_OUTPUT_ID_PREFIX: [u8; 16] = [
-    b's', b'i', b'a', b'f', b'u', b'n', b'd', b' ', b'o', b'u', b't', b'p', b'u', b't', 0, 0,
-];
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SiacoinOutputID([u8; 32]);
@@ -253,6 +245,9 @@ pub struct Transaction {
 }
 
 impl Transaction {
+    const SIACOIN_OUTPUT_ID_PREFIX: Specifier = specifier!("siacoin output");
+    const SIAFUND_OUTPUT_ID_PREFIX: Specifier = specifier!("siafund output");
+
     pub fn encode_no_sigs(&self) -> Vec<u8> {
         let mut buf = Vec::new();
 
@@ -364,7 +359,7 @@ impl Transaction {
     pub fn siacoin_output_id(&self, i: usize) -> SiacoinOutputID {
         let mut state = Params::new().hash_length(32).to_state();
 
-        state.update(&SIACOIN_OUTPUT_ID_PREFIX);
+        state.update(Self::SIACOIN_OUTPUT_ID_PREFIX.as_bytes());
         self.hash_no_sigs(&mut state);
 
         SiacoinOutputID(
@@ -380,7 +375,7 @@ impl Transaction {
     pub fn siafund_output_id(&self, i: usize) -> SiafundOutputID {
         let mut state = Params::new().hash_length(32).to_state();
 
-        state.update(&SIAFUND_OUTPUT_ID_PREFIX);
+        state.update(Self::SIAFUND_OUTPUT_ID_PREFIX.as_bytes());
         self.hash_no_sigs(&mut state);
 
         SiafundOutputID(

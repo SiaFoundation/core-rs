@@ -6,10 +6,10 @@ pub mod currency;
 pub mod encoding;
 pub mod seed;
 pub mod signing;
-pub mod specifier;
 pub mod spendpolicy;
 pub mod transactions;
 
+pub(crate) mod specifier;
 pub(crate) mod blake2b;
 
 pub use address::*;

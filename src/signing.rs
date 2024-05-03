@@ -3,8 +3,9 @@ use std::time::SystemTime;
 
 use crate::consensus::ChainIndex;
 use crate::encoding::{to_writer, SerializeError};
+use crate::specifier::{specifier,Specifier};
 use crate::transactions::{CoveredFields, Transaction};
-use crate::{Algorithm, Hash256, HexParseError};
+use crate::{Hash256, HexParseError};
 use blake2b_simd::Params;
 use ed25519_dalek::{Signature as ED25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::ser::SerializeStruct;
@@ -79,6 +80,45 @@ impl AsRef<[u8; 64]> for PrivateKey {
 impl AsRef<[u8]> for PrivateKey {
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+/// An enum representing algorithms supported for signing and verifying
+/// a v1 unlock key
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum Algorithm {
+    ED25519,
+}
+
+impl Algorithm {
+    const ED25519_SPECIFIER: Specifier = specifier!("ed25519");
+
+    /// Returns the corresponding Specifier for the Algorithm
+    pub fn as_specifier(&self) -> Specifier {
+        match self {
+            Algorithm::ED25519 => Self::ED25519_SPECIFIER,
+        }
+    }
+}
+
+impl fmt::Display for Algorithm {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.as_specifier().fmt(f)
+    }
+}
+
+impl Serialize for Algorithm {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let spec: Specifier = self.as_specifier();
+
+        if serializer.is_human_readable() {
+            serializer.serialize_str(&spec.to_string())
+        } else {
+            spec.serialize(serializer)
+        }
     }
 }
 
