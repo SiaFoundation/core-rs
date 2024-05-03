@@ -3,7 +3,7 @@ use std::time::SystemTime;
 
 use crate::consensus::ChainIndex;
 use crate::encoding::{to_writer, SerializeError};
-use crate::specifier::{specifier,Specifier};
+use crate::specifier::{specifier, Specifier};
 use crate::transactions::{CoveredFields, Transaction};
 use crate::{Hash256, HexParseError};
 use blake2b_simd::Params;
