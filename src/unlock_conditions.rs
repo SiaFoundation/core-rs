@@ -1,88 +1,118 @@
-use core::fmt;
-
-use crate::blake2b::{Accumulator, LEAF_HASH_PREFIX};
 use crate::encoding::to_writer;
-use crate::{Algorithm, HexParseError, PublicKey, UnlockKey};
+use crate::merkle::{Accumulator, LEAF_HASH_PREFIX};
+use crate::signing::PublicKey;
+use crate::specifier::{specifier, Specifier};
+use crate::Address;
+use crate::HexParseError;
 use blake2b_simd::Params;
+#[deprecated]
+use core::fmt;
+use serde::ser::SerializeStruct;
 use serde::Serialize;
 
-/// An address that can be used to receive UTXOs
-#[derive(Debug, PartialEq, Clone)]
-pub struct Address([u8; 32]);
+/// A generic public key that can be used to spend a utxo or revise a file
+///  contract
+///
+/// Currently only supports ed25519 keys
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct UnlockKey {
+    algorithm: Algorithm,
+    public_key: PublicKey,
+}
 
-impl Serialize for Address {
+impl Serialize for UnlockKey {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            serializer.serialize_str(&self.to_string())
+        } else {
+            let mut s = serializer.serialize_struct("UnlockKey", 2)?;
+            s.serialize_field("algorithm", &self.algorithm)?;
+            s.serialize_field("public_key", &self.public_key)?;
+            s.end()
+        }
+    }
+}
+
+impl fmt::Display for UnlockKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:{}", self.algorithm, self.public_key)
+    }
+}
+
+/// An enum representing algorithms supported for signing and verifying
+/// a v1 unlock key
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum Algorithm {
+    ED25519,
+}
+
+impl Algorithm {
+    const ED25519_SPECIFIER: Specifier = specifier!("ed25519");
+
+    /// Returns the corresponding Specifier for the Algorithm
+    pub fn as_specifier(&self) -> Specifier {
+        match self {
+            Algorithm::ED25519 => Self::ED25519_SPECIFIER,
+        }
+    }
+}
+
+impl fmt::Display for Algorithm {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.as_specifier().fmt(f)
+    }
+}
+
+impl Serialize for Algorithm {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
+        let spec: Specifier = self.as_specifier();
+
         if serializer.is_human_readable() {
-            self.to_string().serialize(serializer)
+            serializer.serialize_str(&spec.to_string())
         } else {
-            self.0.serialize(serializer)
+            spec.serialize(serializer)
         }
     }
 }
 
-impl Address {
-    pub fn new(addr: [u8; 32]) -> Address {
-        Address(addr)
+impl UnlockKey {
+    /// Creates a new UnlockKey
+    pub fn new(algorithm: Algorithm, public_key: PublicKey) -> UnlockKey {
+        UnlockKey {
+            algorithm,
+            public_key,
+        }
     }
 
+    /// Parses an UnlockKey from a string
+    /// The string should be in the format "algorithm:public_key"
     pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-        let s = match s.split_once(':') {
-            Some((_prefix, suffix)) => suffix,
-            None => s,
+        let (prefix, key_str) = s.split_once(':').ok_or(HexParseError::MissingPrefix)?;
+        let algorithm = match prefix {
+            "ed25519" => Algorithm::ED25519,
+            _ => return Err(HexParseError::InvalidPrefix),
         };
 
-        if s.len() != 76 {
-            return Err(HexParseError::InvalidLength);
-        }
-
-        let mut data = [0u8; 38];
-        hex::decode_to_slice(s, &mut data).map_err(HexParseError::HexError)?;
-
-        let h = Params::new()
-            .hash_length(32)
-            .to_state()
-            .update(&data[..32])
-            .finalize();
-        let checksum = h.as_bytes();
-
-        if checksum[..6] != data[32..] {
-            return Err(HexParseError::InvalidChecksum);
-        }
-
-        Ok(data[..32].into())
-    }
-}
-
-impl AsRef<[u8]> for Address {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl From<&[u8]> for Address {
-    fn from(val: &[u8]) -> Self {
         let mut data = [0u8; 32];
-        data.copy_from_slice(val);
-        Address(data)
+        hex::decode_to_slice(key_str, &mut data).map_err(HexParseError::HexError)?;
+        Ok(UnlockKey {
+            algorithm,
+            public_key: PublicKey::new(data),
+        })
+    }
+
+    // Returns the public key of the UnlockKey
+    pub fn public_key(&self) -> PublicKey {
+        self.public_key
     }
 }
 
-impl fmt::Display for Address {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut buf = [0u8; 32 + 6];
-        buf[..32].copy_from_slice(&self.0);
-
-        let h = Params::new()
-            .hash_length(32)
-            .to_state()
-            .update(&self.0)
-            .finalize();
-
-        buf[32..].copy_from_slice(&h.as_bytes()[..6]);
-        write!(f, "addr:{}", hex::encode(buf))
+impl From<PublicKey> for UnlockKey {
+    fn from(val: PublicKey) -> Self {
+        UnlockKey::new(Algorithm::ED25519, val)
     }
 }
 
@@ -130,7 +160,7 @@ impl UnlockConditions {
         leaf.copy_from_slice(h.as_bytes());
         acc.add_leaf(&leaf);
 
-        for key in &self.public_keys {
+        for key in self.public_keys.iter() {
             let mut state = Params::new().hash_length(32).to_state();
             state.update(LEAF_HASH_PREFIX);
             to_writer(&mut state, key).unwrap();
@@ -152,7 +182,7 @@ impl UnlockConditions {
         leaf.copy_from_slice(h.as_bytes());
         acc.add_leaf(&leaf);
 
-        Address(acc.root())
+        Address::new(acc.root())
     }
 }
 
@@ -160,7 +190,7 @@ impl UnlockConditions {
 mod tests {
     use super::*;
     use crate::encoding::to_bytes;
-    use serde_json;
+    use crate::seed::Seed;
 
     #[test]
     fn test_sia_serialize_algorithm() {
@@ -181,31 +211,36 @@ mod tests {
     }
 
     #[test]
-    fn test_sia_serialize_address() {
-        let address = Address::parse_string(
-            "addr:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0",
-        )
-        .unwrap();
-
-        // note: the expected value is the same as the input value, but without the checksum
+    fn test_serialize_unlock_key() {
+        let key: [u8; 32] = [
+            0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda,
+            0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb,
+            0x1d, 0x1c, 0xe1, 0xb6,
+        ];
+        let pk = UnlockKey::new(Algorithm::ED25519, PublicKey::new(key));
         assert_eq!(
-            to_bytes(&address).unwrap(),
-            hex::decode("8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c")
-                .unwrap()
-        )
+            &to_bytes(&pk).unwrap(),
+            &[
+                0x65, 0x64, 0x32, 0x35, 0x35, 0x31, 0x39, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9a, 0xac, 0x1f, 0xfb,
+                0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda, 0x1d, 0x56, 0x7e, 0x35,
+                0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb, 0x1d, 0x1c, 0xe1, 0xb6
+            ]
+        );
     }
 
     #[test]
-    fn test_json_serialize_address() {
-        let address = Address::parse_string(
-            "addr:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0",
-        )
-        .unwrap();
-
+    fn test_json_serialize_unlock_key() {
         assert_eq!(
-            serde_json::to_string(&address).unwrap(),
-            "\"addr:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0\""
-        )
+            serde_json::to_string(
+                &UnlockKey::parse_string(
+                    "ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6"
+                )
+                .unwrap()
+            )
+            .unwrap(),
+            "\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\""
+        );
     }
 
     #[test]
@@ -384,8 +419,7 @@ mod tests {
             let expected = Address::parse_string(expected_str).unwrap();
 
             let public_key = PublicKey::new(public_key.as_slice().try_into().unwrap());
-            let uc = UnlockConditions::standard_unlock_conditions(public_key);
-            let addr = uc.address();
+            let addr = UnlockConditions::standard_unlock_conditions(public_key).address();
 
             assert_eq!(addr, expected);
             // test string round-trip
@@ -394,6 +428,35 @@ mod tests {
             } else {
                 assert_eq!(addr.to_string(), expected_str)
             }
+        }
+    }
+
+    #[test]
+    fn test_seed_standard_unlock_hash() {
+        const PHRASE: &str =
+            "song renew capable taxi follow sword more hybrid laptop dance unfair poem";
+        let test_addresses = vec![
+			(0, Address::parse_string("addr:16e09f8dc8a100a03ba1f9503e4035661738d1bea0b6cdc9bb012d3cd25edaacfd780909e550").unwrap()),
+			(1, Address::parse_string("addr:cb016a7018485325fa299bc247113e3792dbea27ee08d2bb57a16cb0804fa449d3a91ee647a1").unwrap()),
+			(2, Address::parse_string("addr:5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34").unwrap()),
+			(3, Address::parse_string("addr:c3bc7bc1431460ed2556874cb63714760120125da758ebbd78198534cb3d25774352fdbb3e8b").unwrap()),
+			(4, Address::parse_string("addr:ebc7eae02ecf76e3ba7312bab6b6f71e9d255801a3a3b83f7cc26bd520b2c27a511cd8604e4b").unwrap()),
+			(5, Address::parse_string("addr:fce241a44b944b10f414782dd35f5d96b92aec3d6da92a45ae44b7dc8cfb4b4ba97a34ce7032").unwrap()),
+			(6, Address::parse_string("addr:36d253e7c3af2213eccaf0a61c6d24be8668f72af6e773463f3c41efc8bb70f2b353b90de9dd").unwrap()),
+			(7, Address::parse_string("addr:c8f85375fb264428c86594863440f856db1da4614d75f4a30e3d9db3dfc88af6995128c6a845").unwrap()),
+			(8, Address::parse_string("addr:85ef2ba14ee464060570b16bddaac91353961e7545067ccdf868a0ece305f00d2c08ec6844c6").unwrap()),
+			(9, Address::parse_string("addr:9dcf644245eba91e7ea70c47ccadf479e6834c1c1221335e7246e0a6bc40e18362c4faa760b8").unwrap()),
+			(4294967295, Address::parse_string("addr:a906891f0c524fd272a905aa5dd7018c69e5d68222385cbd9d5292f38f021ce4bf00953a0659").unwrap()),
+			(4294967296, Address::parse_string("addr:b6ab338e624a304add7afe205361ac71821b87559a3b9c5b3735eaafa914eed533613a0af7fa").unwrap()),
+			(18446744073709551615, Address::parse_string("addr:832d0e8b5f967677d812d75559c373d930ad16eb90c31c29982a190bb7db9edf9438fd827938").unwrap()),
+		];
+
+        let seed = Seed::from_mnemonic(PHRASE).unwrap();
+        for (i, expected) in test_addresses {
+            let pk = seed.private_key(i).public_key();
+            let addr: Address = UnlockConditions::standard_unlock_conditions(pk).address();
+
+            assert_eq!(addr, expected, "index {}", i);
         }
     }
 }

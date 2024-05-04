@@ -31,19 +31,6 @@ impl fmt::Display for Specifier {
     }
 }
 
-// implement the `From` trait for the `Specifier` struct to allow for creating a
-// Specifier from any type that can be converted to a slice of bytes such as
-// 'String', '&str' or byte arrays.
-impl<T: AsRef<[u8]>> From<T> for Specifier {
-    fn from(src: T) -> Self {
-        let src = src.as_ref();
-        assert!(src.len() <= SPECIFIER_SIZE, "specifier too long");
-        let mut spec = Specifier([0; SPECIFIER_SIZE]);
-        spec.0[..src.len()].copy_from_slice(src);
-        spec
-    }
-}
-
 macro_rules! specifier {
     ($text:expr) => {{
         let src = $text.as_bytes();
@@ -70,19 +57,11 @@ mod tests {
 
     #[test]
     fn test_specifier() {
-        let spec = Specifier::from("hello");
+        let spec = specifier!["hello"];
         let expected = Specifier([
             b'h', b'e', b'l', b'l', b'o', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ]);
         assert_eq!(spec, expected);
-    }
-
-    #[test]
-    fn test_specifier_macro() {
-        let test_cases = vec![(specifier!["hello world"], "hello world")];
-        for (specifier, expected) in test_cases {
-            assert_eq!(specifier.to_string(), expected);
-        }
     }
 
     #[test]
@@ -91,8 +70,8 @@ mod tests {
             (specifier!["hello world"], "hello world"),
             (specifier!["hello"], "hello"),
             (
-                Specifier::from([
-                    b'h', b'e', b'l', b'l', b'o', 0, b'w', b'o', b'r', b'l', b'd',
+                Specifier::new([
+                    b'h', b'e', b'l', b'l', b'o', 0, b'w', b'o', b'r', b'l', b'd', 0, 0, 0, 0, 0,
                 ]),
                 "hello\0world",
             ),
