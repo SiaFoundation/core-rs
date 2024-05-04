@@ -2,7 +2,7 @@ use core::fmt;
 
 use crate::blake2b::{Accumulator, LEAF_HASH_PREFIX};
 use crate::encoding::to_writer;
-use crate::{specifier::Specifier, HexParseError, PublicKey, UnlockKey};
+use crate::{Algorithm, HexParseError, PublicKey, UnlockKey};
 use blake2b_simd::Params;
 use serde::Serialize;
 
@@ -83,35 +83,6 @@ impl fmt::Display for Address {
 
         buf[32..].copy_from_slice(&h.as_bytes()[..6]);
         write!(f, "addr:{}", hex::encode(buf))
-    }
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Algorithm {
-    ED25519,
-}
-
-impl fmt::Display for Algorithm {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Algorithm::ED25519 => write!(f, "ed25519"),
-        }
-    }
-}
-
-impl Serialize for Algorithm {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let str = match self {
-            Algorithm::ED25519 => "ed25519",
-        };
-        if serializer.is_human_readable() {
-            serializer.serialize_str(str)
-        } else {
-            Specifier::from(str).serialize(serializer)
-        }
     }
 }
 
