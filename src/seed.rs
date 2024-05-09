@@ -18,15 +18,6 @@ impl From<MnemonicError> for SeedError {
 }
 
 impl Seed {
-    fn entropy(&self) -> Hash256 {
-        Params::new()
-            .hash_length(32)
-            .to_state()
-            .update(self.0.as_ref())
-            .finalize()
-            .into()
-    }
-
     pub fn new(seed: [u8; 16]) -> Self {
         Self(seed)
     }
@@ -55,10 +46,16 @@ impl Seed {
 
     /// Derive a private key from the seed
     pub fn private_key(&self, index: u64) -> PrivateKey {
-        let seed: Hash256 = Params::new()
-            .hash_length(32)
-            .to_state()
-            .update(self.entropy().as_ref())
+		let mut params = Params::new();
+		params.hash_length(32);
+			
+		let entropy: Hash256 = params.to_state()
+			.update(self.0.as_ref())
+			.finalize()
+			.into();
+
+        let seed: Hash256 = params.to_state()
+            .update(entropy.as_ref())
             .update(&index.to_le_bytes())
             .finalize()
             .into();
