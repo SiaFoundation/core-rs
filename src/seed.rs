@@ -46,15 +46,13 @@ impl Seed {
 
     /// Derive a private key from the seed
     pub fn private_key(&self, index: u64) -> PrivateKey {
-		let mut params = Params::new();
-		params.hash_length(32);
-			
-		let entropy: Hash256 = params.to_state()
-			.update(self.0.as_ref())
-			.finalize()
-			.into();
+        let mut params = Params::new();
+        params.hash_length(32);
 
-        let seed: Hash256 = params.to_state()
+        let entropy: Hash256 = params.to_state().update(self.0.as_ref()).finalize().into();
+
+        let seed: Hash256 = params
+            .to_state()
             .update(entropy.as_ref())
             .update(&index.to_le_bytes())
             .finalize()
