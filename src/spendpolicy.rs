@@ -430,7 +430,7 @@ mod tests {
                     median_timestamp: time::UNIX_EPOCH + Duration::from_secs(99),
                     hardforks: NetworkHardforks::default(),
                 },
-                hash: Hash256::new([0; 32]),
+                hash: Hash256::default(),
                 signatures: vec![],
                 preimages: vec![],
                 result: Err(ValidationError::InvalidHeight),
@@ -445,7 +445,7 @@ mod tests {
                     median_timestamp: time::UNIX_EPOCH + Duration::from_secs(99),
                     hardforks: NetworkHardforks::default(),
                 },
-                hash: Hash256::new([0; 32]),
+                hash: Hash256::default(),
                 signatures: vec![],
                 preimages: vec![],
                 result: Ok(()),
@@ -460,7 +460,7 @@ mod tests {
                     median_timestamp: time::UNIX_EPOCH + Duration::from_secs(99),
                     hardforks: NetworkHardforks::default(),
                 },
-                hash: Hash256::new([0; 32]),
+                hash: Hash256::default(),
                 signatures: vec![],
                 preimages: vec![],
                 result: Err(ValidationError::InvalidTimestamp),
@@ -475,7 +475,7 @@ mod tests {
                     median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
                     hardforks: NetworkHardforks::default(),
                 },
-                hash: Hash256::new([0; 32]),
+                hash: Hash256::default(),
                 signatures: vec![],
                 preimages: vec![],
                 result: Ok(()),
@@ -490,7 +490,7 @@ mod tests {
                     median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
                     hardforks: NetworkHardforks::default(),
                 },
-                hash: Hash256::new([0; 32]),
+                hash: Hash256::default(),
                 signatures: vec![],
                 preimages: vec![],
                 result: Err(ValidationError::MissingSignature),
@@ -505,18 +505,14 @@ mod tests {
                     median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
                     hardforks: NetworkHardforks::default(),
                 },
-                hash: Hash256::new([0; 32]),
+                hash: Hash256::default(),
                 signatures: vec![Signature::new([0; 64])],
                 preimages: vec![],
                 result: Err(ValidationError::InvalidSignature),
             },
             {
-                let mut seed = [0; 32];
-                thread_rng().fill(&mut seed);
-                let pk = PrivateKey::from_seed(&seed);
-                let mut hash_bytes = [0; 32];
-                thread_rng().fill(&mut hash_bytes);
-                let sig_hash = Hash256::new(hash_bytes);
+                let pk = PrivateKey::from_seed(&random());
+                let sig_hash = Hash256::new(random());
 
                 PolicyTest {
                     policy: SpendPolicy::PublicKey(pk.public_key()),
@@ -535,12 +531,8 @@ mod tests {
                 }
             },
             {
-                let mut seed = [0; 32];
-                thread_rng().fill(&mut seed);
-                let pk = PrivateKey::from_seed(&seed);
-                let mut hash_bytes = [0; 32];
-                thread_rng().fill(&mut hash_bytes);
-                let sig_hash = Hash256::new(hash_bytes);
+                let pk = PrivateKey::from_seed(&random());
+                let sig_hash = Hash256::new(random());
 
                 PolicyTest {
                     policy: SpendPolicy::Threshold(
@@ -565,12 +557,8 @@ mod tests {
                 }
             },
             {
-                let mut seed = [0; 32];
-                thread_rng().fill(&mut seed);
-                let pk = PrivateKey::from_seed(&seed);
-                let mut hash_bytes = [0; 32];
-                thread_rng().fill(&mut hash_bytes);
-                let sig_hash = Hash256::new(hash_bytes);
+                let pk = PrivateKey::from_seed(&random());
+                let sig_hash = Hash256::new(random());
 
                 PolicyTest {
                     policy: SpendPolicy::Threshold(
@@ -595,12 +583,8 @@ mod tests {
                 }
             },
             {
-                let mut seed = [0; 32];
-                thread_rng().fill(&mut seed);
-                let pk = PrivateKey::from_seed(&seed);
-                let mut hash_bytes = [0; 32];
-                thread_rng().fill(&mut hash_bytes);
-                let sig_hash = Hash256::new(hash_bytes);
+                let pk = PrivateKey::from_seed(&random());
+                let sig_hash = Hash256::new(random());
 
                 PolicyTest {
                     policy: SpendPolicy::Threshold(
@@ -625,12 +609,8 @@ mod tests {
                 }
             },
             {
-                let mut seed = [0; 32];
-                thread_rng().fill(&mut seed);
-                let pk = PrivateKey::from_seed(&seed);
-                let mut hash_bytes = [0; 32];
-                thread_rng().fill(&mut hash_bytes);
-                let sig_hash = Hash256::new(hash_bytes);
+                let pk = PrivateKey::from_seed(&random());
+                let sig_hash = Hash256::new(random());
 
                 PolicyTest {
                     policy: SpendPolicy::Threshold(
@@ -655,12 +635,8 @@ mod tests {
                 }
             },
             {
-                let mut seed = [0; 32];
-                thread_rng().fill(&mut seed);
-                let pk = PrivateKey::from_seed(&seed);
-                let mut hash_bytes = [0; 32];
-                thread_rng().fill(&mut hash_bytes);
-                let sig_hash = Hash256::new(hash_bytes);
+                let pk = PrivateKey::from_seed(&random());
+                let sig_hash = Hash256::new(random());
 
                 PolicyTest {
                     policy: SpendPolicy::Threshold(
@@ -702,7 +678,7 @@ mod tests {
                         median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
                         hardforks: NetworkHardforks::default(),
                     },
-                    hash: Hash256::new([0; 32]),
+                    hash: Hash256::default(),
                     signatures: vec![],
                     preimages: vec![],
                     result: Err(ValidationError::MissingPreimage),
@@ -726,7 +702,7 @@ mod tests {
                         median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
                         hardforks: NetworkHardforks::default(),
                     },
-                    hash: Hash256::new([0; 32]),
+                    hash: Hash256::default(),
                     signatures: vec![],
                     preimages: vec![[0; 64].to_vec()],
                     result: Err(ValidationError::InvalidPreimage),
@@ -750,7 +726,7 @@ mod tests {
                         median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
                         hardforks: NetworkHardforks::default(),
                     },
-                    hash: Hash256::new([0; 32]),
+                    hash: Hash256::default(),
                     signatures: vec![],
                     preimages: vec![preimage.to_vec()],
                     result: Ok(()),

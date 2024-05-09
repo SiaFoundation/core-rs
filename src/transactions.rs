@@ -589,7 +589,7 @@ mod tests {
     #[test]
     fn test_json_serialize_transaction_signature() {
         let txn_sig = TransactionSignature {
-            parent_id: Hash256::new([0u8; 32]),
+            parent_id: Hash256::default(),
             public_key_index: 1,
             timelock: 2,
             covered_fields: CoveredFields::default(),
