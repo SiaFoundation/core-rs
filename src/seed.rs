@@ -1,6 +1,7 @@
-use crate::PrivateKey;
+use crate::signing::PrivateKey;
+use crate::Hash256;
 use bip39::{Error as MnemonicError, Language, Mnemonic};
-use blake2b_simd::Params as Blake2bParams;
+use blake2b_simd::Params;
 
 pub struct Seed([u8; 16]);
 
@@ -17,16 +18,20 @@ impl From<MnemonicError> for SeedError {
 }
 
 impl Seed {
-    pub fn from_entropy(data: [u8; 16]) -> Self {
-        Self(data)
+    pub fn new(seed: [u8; 16]) -> Self {
+        Self(seed)
     }
 
     pub fn from_mnemonic(s: &str) -> Result<Self, SeedError> {
         let m = Mnemonic::parse_in(Language::English, s)?;
-        if m.to_entropy().len() != 16 {
+        let buf = m.to_entropy();
+        if buf.len() != 16 {
             return Err(SeedError::InvalidLength);
         }
-        Ok(Self(m.to_entropy().as_slice().try_into().unwrap()))
+
+        let mut entropy = [0; 16];
+        entropy.copy_from_slice(&buf[..16]);
+        Ok(Self::new(entropy))
     }
 
     pub fn to_mnemonic(&self) -> String {
@@ -35,34 +40,40 @@ impl Seed {
             .to_string()
     }
 
-    pub fn private_key(&self, index: u64) -> PrivateKey {
-        let seed: [u8; 32] = Blake2bParams::new()
-            .hash_length(32)
-            .to_state()
-            .update(&self.0)
-            .finalize()
-            .as_ref()
-            .try_into()
-            .unwrap();
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_ref()
+    }
 
-        PrivateKey::from_seed(
-            Blake2bParams::new()
-                .hash_length(32)
-                .to_state()
-                .update(&seed)
-                .update(&index.to_le_bytes())
-                .finalize()
-                .as_ref()
-                .try_into()
-                .unwrap(),
-        )
+    /// Derive a private key from the seed
+    pub fn private_key(&self, index: u64) -> PrivateKey {
+        let mut params = Params::new();
+        params.hash_length(32);
+
+        let entropy: Hash256 = params.to_state().update(self.0.as_ref()).finalize().into();
+
+        let seed: Hash256 = params
+            .to_state()
+            .update(entropy.as_ref())
+            .update(&index.to_le_bytes())
+            .finalize()
+            .into();
+
+        seed.into()
+    }
+}
+
+impl Drop for Seed {
+    fn drop(&mut self) {
+        // Zero out the private key
+        for byte in self.0.iter_mut() {
+            *byte = 0;
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Address, UnlockConditions};
 
     #[test]
     fn test_seed_from_entropy() {
@@ -94,7 +105,7 @@ mod tests {
 		];
 
         for (entropy, expected) in test_cases {
-            let seed = Seed::from_entropy(entropy);
+            let seed = Seed::new(entropy);
             assert_eq!(seed.to_mnemonic(), expected);
         }
     }
@@ -122,7 +133,7 @@ mod tests {
         let seed = Seed::from_mnemonic(PHRASE).unwrap();
         for (i, expected) in test_addresses {
             let pk = seed.private_key(i);
-            assert_eq!(pk.as_ref(), expected, "index {}", i);
+            assert_eq!(pk.as_bytes(), expected, "index {}", i);
         }
     }
 
@@ -150,35 +161,6 @@ mod tests {
         for (i, expected) in test_addresses {
             let pk = seed.private_key(i).public_key();
             assert_eq!(pk.as_ref(), expected[32..].as_ref(), "index {}", i);
-        }
-    }
-
-    #[test]
-    fn test_seed_standard_address() {
-        const PHRASE: &str =
-            "song renew capable taxi follow sword more hybrid laptop dance unfair poem";
-        let test_addresses = vec![
-			(0, Address::parse_string("addr:16e09f8dc8a100a03ba1f9503e4035661738d1bea0b6cdc9bb012d3cd25edaacfd780909e550").unwrap()),
-			(1, Address::parse_string("addr:cb016a7018485325fa299bc247113e3792dbea27ee08d2bb57a16cb0804fa449d3a91ee647a1").unwrap()),
-			(2, Address::parse_string("addr:5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34").unwrap()),
-			(3, Address::parse_string("addr:c3bc7bc1431460ed2556874cb63714760120125da758ebbd78198534cb3d25774352fdbb3e8b").unwrap()),
-			(4, Address::parse_string("addr:ebc7eae02ecf76e3ba7312bab6b6f71e9d255801a3a3b83f7cc26bd520b2c27a511cd8604e4b").unwrap()),
-			(5, Address::parse_string("addr:fce241a44b944b10f414782dd35f5d96b92aec3d6da92a45ae44b7dc8cfb4b4ba97a34ce7032").unwrap()),
-			(6, Address::parse_string("addr:36d253e7c3af2213eccaf0a61c6d24be8668f72af6e773463f3c41efc8bb70f2b353b90de9dd").unwrap()),
-			(7, Address::parse_string("addr:c8f85375fb264428c86594863440f856db1da4614d75f4a30e3d9db3dfc88af6995128c6a845").unwrap()),
-			(8, Address::parse_string("addr:85ef2ba14ee464060570b16bddaac91353961e7545067ccdf868a0ece305f00d2c08ec6844c6").unwrap()),
-			(9, Address::parse_string("addr:9dcf644245eba91e7ea70c47ccadf479e6834c1c1221335e7246e0a6bc40e18362c4faa760b8").unwrap()),
-			(4294967295, Address::parse_string("addr:a906891f0c524fd272a905aa5dd7018c69e5d68222385cbd9d5292f38f021ce4bf00953a0659").unwrap()),
-			(4294967296, Address::parse_string("addr:b6ab338e624a304add7afe205361ac71821b87559a3b9c5b3735eaafa914eed533613a0af7fa").unwrap()),
-			(18446744073709551615, Address::parse_string("addr:832d0e8b5f967677d812d75559c373d930ad16eb90c31c29982a190bb7db9edf9438fd827938").unwrap()),
-		];
-
-        let seed = Seed::from_mnemonic(PHRASE).unwrap();
-        for (i, expected) in test_addresses {
-            let pk = seed.private_key(i).public_key();
-            let addr = UnlockConditions::standard_unlock_conditions(pk).address();
-
-            assert_eq!(addr, expected, "index {}", i);
         }
     }
 }
