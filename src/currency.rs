@@ -37,11 +37,11 @@ impl<'de> Deserialize<'de> for Currency {
             Currency::parse_string(&s).map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
         } else {
             let data = Vec::deserialize(deserializer)?;
-            if data.is_empty() || data.len() > 16 {
+            if data.len() == 0 || data.len() > 16 {
                 return Err(serde::de::Error::custom("invalid currency length"));
             }
             let mut buf = [0; 16];
-            buf[..data.len()].copy_from_slice(&data);
+            buf[16 - data.len()..].copy_from_slice(&data);
             Ok(Currency(u128::from_be_bytes(buf)))
         }
     }

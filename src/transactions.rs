@@ -6,9 +6,9 @@ use crate::{Address, Currency};
 use crate::{Hash256, HexParseError};
 use blake2b_simd::{Params, State};
 use core::fmt;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Copy, Clone, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SiacoinOutputID(Hash256);
 
 impl SiacoinOutputID {
@@ -48,13 +48,13 @@ impl fmt::Display for SiacoinOutputID {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SiacoinInput {
     pub parent_id: SiacoinOutputID,
     pub unlock_conditions: UnlockConditions,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SiacoinOutput {
     pub value: Currency,
     pub address: Address,
@@ -541,7 +541,7 @@ impl Transaction {
 
 #[cfg(test)]
 mod tests {
-    use crate::encoding::to_bytes;
+    use crate::encoding::{from_reader, to_bytes};
     use crate::signing::NetworkHardforks;
     use crate::ChainIndex;
     use std::time::SystemTime;
@@ -599,20 +599,37 @@ mod tests {
     }
 
     #[test]
-    fn test_siacoin_output() {
+    fn test_serialize_siacoin_output() {
+        let addr_str =
+            "addr:000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69";
         let output = SiacoinOutput {
             value: Currency::new(67856467336433871),
-            address: Address::parse_string(
-                "addr:000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69",
-            )
-            .unwrap(),
+            address: Address::parse_string(addr_str).unwrap(),
         };
-        let result = to_bytes(&output).expect("failed to serialize output");
-        let expected: [u8; 47] = [
-            7, 0, 0, 0, 0, 0, 0, 0, 241, 19, 24, 247, 77, 16, 207, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        ];
-        assert_eq!(result, expected);
+
+        // binary
+        let output_serialized = to_bytes(&output).unwrap();
+        let output_deserialized: SiacoinOutput = from_reader(&mut &output_serialized[..]).unwrap();
+        assert_eq!(
+            output_serialized,
+            [
+                7, 0, 0, 0, 0, 0, 0, 0, 241, 19, 24, 247, 77, 16, 207, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            ]
+        );
+        assert_eq!(output_deserialized, output);
+
+        // json
+        let output_serialized = serde_json::to_string(&output).unwrap();
+        let output_deserialized: SiacoinOutput = serde_json::from_str(&output_serialized).unwrap();
+        assert_eq!(
+            output_serialized,
+            format!(
+                "{{\"value\":\"67856467336433871\",\"address\":\"{}\"}}",
+                addr_str
+            )
+        );
+        assert_eq!(output_deserialized, output);
     }
 
     #[test]
