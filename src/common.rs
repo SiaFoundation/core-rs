@@ -1,6 +1,7 @@
 use blake2b_simd::{Hash, Params};
 use core::fmt;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::fmt::Debug;
 
 pub struct ChainIndex {
     pub height: u64,
@@ -33,6 +34,21 @@ impl Serialize for Hash256 {
             serializer.serialize_str(&self.to_string())
         } else {
             self.0.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Hash256 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            Hash256::parse_string(&s).map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
+        } else {
+            let data = <[u8; 32]>::deserialize(deserializer)?;
+            Ok(Hash256(data))
         }
     }
 }
@@ -89,6 +105,21 @@ impl AsRef<[u8]> for Hash256 {
 /// An address that can be used to receive UTXOs
 #[derive(Debug, PartialEq, Clone)]
 pub struct Address([u8; 32]);
+
+impl<'de> Deserialize<'de> for Address {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            Address::parse_string(&s).map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
+        } else {
+            let data = <[u8; 32]>::deserialize(deserializer)?;
+            Ok(Address(data))
+        }
+    }
+}
 
 impl Serialize for Address {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -169,18 +200,24 @@ impl fmt::Display for Address {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::encoding::to_bytes;
+    use crate::encoding::{from_reader, to_bytes};
 
     #[test]
-    fn test_json_serialize_hash256() {
-        let hash = Hash256::parse_string(
-            "h:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6",
-        )
-        .unwrap();
-        assert_eq!(
-            serde_json::to_string(&hash).unwrap(),
-            "\"h:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\""
-        );
+    fn test_serialize_hash256() {
+        let hash_str = "9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6";
+        let hash = Hash256(hex::decode(hash_str).unwrap().try_into().unwrap());
+
+        // binary
+        let hash_serialized = to_bytes(&hash).unwrap();
+        let hash_deserialized: Hash256 = from_reader(&mut &hash_serialized[..]).unwrap();
+        assert_eq!(hash_serialized, hex::decode(hash_str).unwrap()); // serialize
+        assert_eq!(hash_deserialized, hash); // deserialize
+
+        // json
+        let hash_serialized = serde_json::to_string(&hash).unwrap();
+        let hash_deserialized: Hash256 = serde_json::from_str(&hash_serialized).unwrap();
+        assert_eq!(hash_serialized, format!("\"h:{0}\"", hash_str)); // serialize
+        assert_eq!(hash_deserialized, hash); // deserialize
     }
 
     #[test]
