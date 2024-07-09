@@ -77,6 +77,10 @@ where
 {
     type Error = Error;
 
+    fn is_human_readable(&self) -> bool {
+        false
+    }
+
     // deserialize_any is not available for the Sia format since it's not
     // self-describing
     fn deserialize_any<V>(self, _visitor: V) -> Result<V::Value, Self::Error>

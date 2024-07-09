@@ -1,7 +1,7 @@
 use core::num::ParseIntError;
 use core::ops::{Add, Deref, DerefMut, Div, Mul, Sub};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 // I miss untyped constants
 const SIACOIN_PRECISION_I32: i32 = 24;
@@ -26,6 +26,23 @@ impl Serialize for Currency {
                 .find(|&(_index, &value)| value != 0)
                 .map_or(16, |(index, _value)| index); // 16 if all bytes are 0
             currency_buf[i..].serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Currency {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            Currency::parse_string(&s).map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
+        } else {
+            let data = Vec::deserialize(deserializer)?;
+            if data.is_empty() || data.len() > 16 {
+                return Err(serde::de::Error::custom("invalid currency length"));
+            }
+            let mut buf = [0; 16];
+            buf[..data.len()].copy_from_slice(&data);
+            Ok(Currency(u128::from_be_bytes(buf)))
         }
     }
 }
@@ -280,7 +297,7 @@ impl FromStr for Currency {
 
 #[cfg(test)]
 mod tests {
-    use crate::encoding::to_bytes;
+    use crate::encoding::{from_reader, to_bytes};
 
     use super::*;
 
@@ -409,5 +426,29 @@ mod tests {
             let bytes = to_bytes(&currency).unwrap();
             assert_eq!(bytes, expected, "failed for {:?}", currency);
         }
+    }
+
+    #[test]
+    fn test_serialize_currency() {
+        let currency_num = 120282366920938463463374607431768211455;
+        let currency = Currency::new(currency_num);
+
+        // binary
+        let currency_serialized = to_bytes(&currency).unwrap();
+        let currency_deserialized: Currency = from_reader(&mut &currency_serialized[..]).unwrap();
+        assert_eq!(
+            currency_serialized,
+            u64::to_le_bytes(16) // prefix
+                .into_iter()
+                .chain(u128::to_be_bytes(currency_num)) // number
+                .collect::<Vec<u8>>()
+        );
+        assert_eq!(currency_deserialized, currency);
+
+        // json
+        let currency_serialized = serde_json::to_string(&currency).unwrap();
+        let currency_deserialized: Currency = serde_json::from_str(&currency_serialized).unwrap();
+        assert_eq!(currency_serialized, format!("\"{}\"", currency_num));
+        assert_eq!(currency_deserialized, currency);
     }
 }
