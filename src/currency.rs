@@ -297,9 +297,7 @@ impl FromStr for Currency {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        encoding::{from_reader, to_bytes},
-    };
+    use crate::encoding::{from_reader, to_bytes};
 
     use super::*;
 
