@@ -221,30 +221,24 @@ mod tests {
     }
 
     #[test]
-    fn test_sia_serialize_address() {
-        let address = Address::parse_string(
-            "addr:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0",
-        )
-        .unwrap();
+    fn test_serialize_address() {
+        let addr_str = "8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c";
+        let checksum = "df32abee86f0";
+        let address = Address(hex::decode(addr_str).unwrap().try_into().unwrap());
 
-        // note: the expected value is the same as the input value, but without the checksum
+        // binary
+        let addr_serialized = to_bytes(&address).unwrap();
+        let addr_deserialized: Address = from_reader(&mut &addr_serialized[..]).unwrap();
+        assert_eq!(addr_serialized, hex::decode(addr_str).unwrap()); // serialize
+        assert_eq!(addr_deserialized, address); // deserialize
+
+        // json
+        let addr_serialized = serde_json::to_string(&address).unwrap();
+        let addr_deserialized: Address = serde_json::from_str(&addr_serialized).unwrap();
         assert_eq!(
-            to_bytes(&address).unwrap(),
-            hex::decode("8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c")
-                .unwrap()
-        )
-    }
-
-    #[test]
-    fn test_json_serialize_address() {
-        let address = Address::parse_string(
-            "addr:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0",
-        )
-        .unwrap();
-
-        assert_eq!(
-            serde_json::to_string(&address).unwrap(),
-            "\"addr:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0\""
-        )
+            addr_serialized,
+            format!("\"addr:{0}{1}\"", addr_str, checksum)
+        ); // serialize
+        assert_eq!(addr_deserialized, address); // deserialize
     }
 }
