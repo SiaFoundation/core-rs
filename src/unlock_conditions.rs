@@ -161,7 +161,7 @@ impl From<PublicKey> for UnlockKey {
 pub struct UnlockConditions {
     pub timelock: u64,
     pub public_keys: Vec<UnlockKey>,
-    pub required_signatures: u64,
+    pub signatures_required: u64,
 }
 
 impl UnlockConditions {
@@ -173,7 +173,7 @@ impl UnlockConditions {
         UnlockConditions {
             timelock,
             public_keys,
-            required_signatures,
+            signatures_required: required_signatures,
         }
     }
 
@@ -181,7 +181,7 @@ impl UnlockConditions {
         UnlockConditions {
             timelock: 0,
             public_keys: vec![UnlockKey::new(Algorithm::ED25519, public_key)],
-            required_signatures: 1,
+            signatures_required: 1,
         }
     }
 
@@ -214,7 +214,7 @@ impl UnlockConditions {
             .hash_length(32)
             .to_state()
             .update(LEAF_HASH_PREFIX)
-            .update(&self.required_signatures.to_le_bytes())
+            .update(&self.signatures_required.to_le_bytes())
             .finalize();
 
         let mut leaf = [0u8; 32];
@@ -287,23 +287,6 @@ mod tests {
     }
 
     #[test]
-    fn test_json_serialize_unlock_conditions() {
-        let uc = UnlockConditions::new(
-            123,
-            vec![UnlockKey::new(
-                Algorithm::ED25519,
-                PublicKey::new([
-                    0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47,
-                    0xda, 0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a,
-                    0xd0, 0xdb, 0x1d, 0x1c, 0xe1, 0xb6,
-                ]),
-            )],
-            1,
-        );
-        assert_eq!(serde_json::to_string(&uc).unwrap(), "{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"requiredSignatures\":1}")
-    }
-
-    #[test]
     fn test_serialize_unlock_conditions() {
         let unlock_conditions = UnlockConditions::new(
             123,
@@ -337,7 +320,7 @@ mod tests {
         let unlock_conditions_serialized = serde_json::to_string(&unlock_conditions).unwrap();
         let unlock_conditions_deserialized: UnlockConditions =
             serde_json::from_str(&unlock_conditions_serialized).unwrap();
-        assert_eq!(unlock_conditions_serialized, "{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"requiredSignatures\":1}");
+        assert_eq!(unlock_conditions_serialized, "{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1}");
         assert_eq!(unlock_conditions_deserialized, unlock_conditions);
     }
 
