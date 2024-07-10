@@ -48,7 +48,7 @@ impl fmt::Display for SiacoinOutputID {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SiacoinInput {
     pub parent_id: SiacoinOutputID,
     pub unlock_conditions: UnlockConditions,

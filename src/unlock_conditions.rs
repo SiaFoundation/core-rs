@@ -156,7 +156,7 @@ impl From<PublicKey> for UnlockKey {
 }
 
 // specifies the conditions for spending an output or revising a file contract.
-#[derive(Debug, PartialEq, Clone, Serialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnlockConditions {
     pub timelock: u64,
@@ -305,7 +305,7 @@ mod tests {
 
     #[test]
     fn test_serialize_unlock_conditions() {
-        let uc = UnlockConditions::new(
+        let unlock_conditions = UnlockConditions::new(
             123,
             vec![UnlockKey::new(
                 Algorithm::ED25519,
@@ -317,15 +317,28 @@ mod tests {
             )],
             1,
         );
+
+        // binary
+        let unlock_conditions_serialized = to_bytes(&unlock_conditions).unwrap();
+        let unlock_conditions_deserialized: UnlockConditions =
+            from_reader(&mut &unlock_conditions_serialized[..]).unwrap();
         assert_eq!(
-            to_bytes(&uc).unwrap(),
+            unlock_conditions_serialized,
             [
                 123, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 101, 100, 50, 53, 53, 49, 57, 0,
                 0, 0, 0, 0, 0, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 154, 172, 31, 251, 28, 253, 16,
                 121, 168, 198, 200, 123, 71, 218, 29, 86, 126, 53, 185, 114, 52, 153, 60, 40, 140,
                 26, 208, 219, 29, 28, 225, 182, 1, 0, 0, 0, 0, 0, 0, 0
             ]
-        )
+        );
+        assert_eq!(unlock_conditions_deserialized, unlock_conditions);
+
+        // json
+        let unlock_conditions_serialized = serde_json::to_string(&unlock_conditions).unwrap();
+        let unlock_conditions_deserialized: UnlockConditions =
+            serde_json::from_str(&unlock_conditions_serialized).unwrap();
+        assert_eq!(unlock_conditions_serialized, "{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"requiredSignatures\":1}");
+        assert_eq!(unlock_conditions_deserialized, unlock_conditions);
     }
 
     #[test]
