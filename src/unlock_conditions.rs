@@ -7,6 +7,7 @@ use crate::HexParseError;
 use blake2b_simd::Params;
 #[deprecated]
 use core::fmt;
+use serde::de::Error;
 use serde::{Deserialize, Serialize};
 
 /// A generic public key that can be used to spend a utxo or revise a file
@@ -36,12 +37,16 @@ impl<'de> Deserialize<'de> for UnlockKey {
     {
         if deserializer.is_human_readable() {
             let s = String::deserialize(deserializer)?;
-            UnlockKey::parse_string(&s).map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
+            UnlockKey::parse_string(&s).map_err(|e| Error::custom(format!("{:?}", e)))
         } else {
-            let (algorithm, public_key) = <(Algorithm, [u8; 32])>::deserialize(deserializer)?;
+            let (algorithm, raw_key) = <(Algorithm, Vec<u8>)>::deserialize(deserializer)?;
             Ok(Self {
                 algorithm,
-                public_key: PublicKey::new(public_key),
+                public_key: PublicKey::new(
+                    raw_key
+                        .try_into()
+                        .map_err(|e| Error::custom(format!("Invalid key: {:?}", e)))?,
+                ),
             })
         }
     }
@@ -100,13 +105,13 @@ impl<'de> Deserialize<'de> for Algorithm {
             let s = String::deserialize(deserializer)?;
             match s.as_str() {
                 "ed25519" => Ok(Algorithm::ED25519),
-                _ => Err(serde::de::Error::custom("Invalid algorithm")),
+                _ => Err(Error::custom("Invalid algorithm")),
             }
         } else {
             let spec = Specifier::deserialize(deserializer)?;
             match spec {
                 Self::ED25519_SPECIFIER => Ok(Algorithm::ED25519),
-                _ => Err(serde::de::Error::custom("Invalid algorithm")),
+                _ => Err(Error::custom("Invalid algorithm")),
             }
         }
     }
@@ -223,7 +228,7 @@ impl UnlockConditions {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::encoding::to_bytes;
+    use crate::encoding::{from_reader, to_bytes};
     use crate::seed::Seed;
 
     #[test]
@@ -246,35 +251,39 @@ mod tests {
 
     #[test]
     fn test_serialize_unlock_key() {
-        let key: [u8; 32] = [
-            0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda,
-            0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb,
-            0x1d, 0x1c, 0xe1, 0xb6,
-        ];
-        let pk = UnlockKey::new(Algorithm::ED25519, PublicKey::new(key));
+        let unlock_key = UnlockKey::new(
+            Algorithm::ED25519,
+            PublicKey::new([
+                0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda,
+                0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb,
+                0x1d, 0x1c, 0xe1, 0xb6,
+            ]),
+        );
+
+        // binary
+        let unlock_key_serialized = to_bytes(&unlock_key).unwrap();
+        let unlock_key_deserialized: UnlockKey =
+            from_reader(&mut &unlock_key_serialized[..]).unwrap();
         assert_eq!(
-            &to_bytes(&pk).unwrap(),
-            &[
+            unlock_key_serialized,
+            [
                 0x65, 0x64, 0x32, 0x35, 0x35, 0x31, 0x39, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9a, 0xac, 0x1f, 0xfb,
                 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda, 0x1d, 0x56, 0x7e, 0x35,
                 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb, 0x1d, 0x1c, 0xe1, 0xb6
             ]
         );
-    }
+        assert_eq!(unlock_key_deserialized, unlock_key);
 
-    #[test]
-    fn test_json_serialize_unlock_key() {
+        // json
+        let unlock_key_serialized = serde_json::to_string(&unlock_key).unwrap();
+        let unlock_key_deserialized: UnlockKey =
+            serde_json::from_str(&unlock_key_serialized).unwrap();
         assert_eq!(
-            serde_json::to_string(
-                &UnlockKey::parse_string(
-                    "ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6"
-                )
-                .unwrap()
-            )
-            .unwrap(),
+            unlock_key_serialized,
             "\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\""
         );
+        assert_eq!(unlock_key_deserialized, unlock_key);
     }
 
     #[test]
