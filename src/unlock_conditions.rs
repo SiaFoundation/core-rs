@@ -24,18 +24,7 @@ impl Serialize for UnlockKey {
         if serializer.is_human_readable() {
             String::serialize(&self.to_string(), serializer)
         } else {
-            #[derive(Serialize)]
-            struct NotHumanReadable<'a> {
-                algorithm: Algorithm,
-                public_key: &'a [u8], // public_key needs to be length prefixed
-            }
-            NotHumanReadable::serialize(
-                &NotHumanReadable {
-                    algorithm: self.algorithm,
-                    public_key: self.public_key.as_ref(),
-                },
-                serializer,
-            )
+            <(Algorithm, &[u8])>::serialize(&(self.algorithm, self.public_key.as_ref()), serializer)
         }
     }
 }
@@ -49,15 +38,10 @@ impl<'de> Deserialize<'de> for UnlockKey {
             let s = String::deserialize(deserializer)?;
             UnlockKey::parse_string(&s).map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
         } else {
-            #[derive(Deserialize)]
-            struct NotHumanReadable {
-                algorithm: Algorithm,
-                public_key: PublicKey,
-            }
-            let result = NotHumanReadable::deserialize(deserializer)?;
+            let (algorithm, public_key) = <(Algorithm, [u8; 32])>::deserialize(deserializer)?;
             Ok(Self {
-                algorithm: result.algorithm,
-                public_key: result.public_key,
+                algorithm,
+                public_key: PublicKey::new(public_key),
             })
         }
     }
