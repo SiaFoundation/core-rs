@@ -7,8 +7,7 @@ use crate::HexParseError;
 use blake2b_simd::Params;
 #[deprecated]
 use core::fmt;
-use serde::ser::SerializeStruct;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// A generic public key that can be used to spend a utxo or revise a file
 ///  contract
@@ -25,10 +24,41 @@ impl Serialize for UnlockKey {
         if serializer.is_human_readable() {
             serializer.serialize_str(&self.to_string())
         } else {
-            let mut s = serializer.serialize_struct("UnlockKey", 2)?;
-            s.serialize_field("algorithm", &self.algorithm)?;
-            s.serialize_field("public_key", &self.public_key)?;
-            s.end()
+            #[derive(Serialize)]
+            struct NotHumanReadable {
+                algorithm: Algorithm,
+                public_key: PublicKey,
+            }
+            NotHumanReadable::serialize(
+                &NotHumanReadable {
+                    algorithm: self.algorithm,
+                    public_key: self.public_key,
+                },
+                serializer,
+            )
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UnlockKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            UnlockKey::parse_string(&s).map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
+        } else {
+            #[derive(Deserialize)]
+            struct NotHumanReadable {
+                algorithm: Algorithm,
+                public_key: PublicKey,
+            }
+            let result = NotHumanReadable::deserialize(deserializer)?;
+            Ok(Self {
+                algorithm: result.algorithm,
+                public_key: result.public_key,
+            })
         }
     }
 }
@@ -69,11 +99,31 @@ impl Serialize for Algorithm {
         S: serde::Serializer,
     {
         let spec: Specifier = self.as_specifier();
-
         if serializer.is_human_readable() {
             serializer.serialize_str(&spec.to_string())
         } else {
             spec.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Algorithm {
+    fn deserialize<D>(deserializer: D) -> Result<Algorithm, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            match s.as_str() {
+                "ed25519" => Ok(Algorithm::ED25519),
+                _ => Err(serde::de::Error::custom("Invalid algorithm")),
+            }
+        } else {
+            let spec = Specifier::deserialize(deserializer)?;
+            match spec {
+                Self::ED25519_SPECIFIER => Ok(Algorithm::ED25519),
+                _ => Err(serde::de::Error::custom("Invalid algorithm")),
+            }
         }
     }
 }

@@ -3,7 +3,7 @@ use std::time::SystemTime;
 
 use crate::{ChainIndex, Hash256, HexParseError};
 use ed25519_dalek::{Signature as ED25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// An ed25519 public key that can be used to verify a signature
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -15,6 +15,23 @@ impl Serialize for PublicKey {
             serializer.serialize_str(&self.to_string())
         } else {
             serializer.serialize_bytes(&self.0)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for PublicKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            let mut pk = [0; 32];
+            hex::decode_to_slice(s, &mut pk)
+                .map_err(|e| serde::de::Error::custom(format!("{:?}", e)))?;
+            Ok(Self::new(pk))
+        } else {
+            Ok(PublicKey(<[u8; 32]>::deserialize(deserializer)?))
         }
     }
 }

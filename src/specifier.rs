@@ -1,10 +1,10 @@
 use core::{fmt, str};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub const SPECIFIER_SIZE: usize = 16;
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Specifier([u8; SPECIFIER_SIZE]);
 
 impl Specifier {
