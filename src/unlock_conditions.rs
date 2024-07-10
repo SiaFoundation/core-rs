@@ -22,7 +22,7 @@ pub struct UnlockKey {
 impl Serialize for UnlockKey {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serializer.serialize_str(&self.to_string())
+            String::serialize(&self.to_string(), serializer)
         } else {
             #[derive(Serialize)]
             struct NotHumanReadable {
@@ -100,7 +100,7 @@ impl Serialize for Algorithm {
     {
         let spec: Specifier = self.as_specifier();
         if serializer.is_human_readable() {
-            serializer.serialize_str(&spec.to_string())
+            String::serialize(&self.to_string(), serializer)
         } else {
             spec.serialize(serializer)
         }

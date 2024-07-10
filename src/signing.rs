@@ -1,7 +1,7 @@
 use core::fmt;
 use std::time::SystemTime;
 
-use crate::{encoding::serialize_array, ChainIndex, Hash256, HexParseError};
+use crate::{ChainIndex, Hash256, HexParseError};
 use ed25519_dalek::{Signature as ED25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
@@ -12,9 +12,9 @@ pub struct PublicKey([u8; 32]);
 impl Serialize for PublicKey {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serializer.serialize_str(&self.to_string())
+            String::serialize(&self.to_string(), serializer)
         } else {
-            serialize_array(&self.0, serializer)
+            <[u8; 32]>::serialize(&self.0, serializer)
         }
     }
 }
@@ -107,9 +107,9 @@ pub struct Signature([u8; 64]);
 impl Serialize for Signature {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serializer.serialize_str(&self.to_string())
+            String::serialize(&self.to_string(), serializer)
         } else {
-            serializer.serialize_bytes(&self.0) // prefixed with length
+            <[u8]>::serialize(&self.0, serializer) // prefixed with length
         }
     }
 }
