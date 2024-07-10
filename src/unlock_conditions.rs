@@ -25,14 +25,14 @@ impl Serialize for UnlockKey {
             String::serialize(&self.to_string(), serializer)
         } else {
             #[derive(Serialize)]
-            struct NotHumanReadable {
+            struct NotHumanReadable<'a> {
                 algorithm: Algorithm,
-                public_key: PublicKey,
+                public_key: &'a [u8], // public_key needs to be length prefixed
             }
             NotHumanReadable::serialize(
                 &NotHumanReadable {
                     algorithm: self.algorithm,
-                    public_key: self.public_key,
+                    public_key: self.public_key.as_ref(),
                 },
                 serializer,
             )
