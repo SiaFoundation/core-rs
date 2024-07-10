@@ -3,16 +3,23 @@ use std::time::SystemTime;
 
 use crate::{ChainIndex, Hash256, HexParseError};
 use ed25519_dalek::{Signature as ED25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
-use serde::{Deserialize, Serialize};
+use serde::{de::Error, Deserialize, Serialize};
 
 /// An ed25519 public key that can be used to verify a signature
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct PublicKey([u8; 32]);
 
+impl PublicKey {
+    const PREFIX: &'static str = "ed25519:";
+}
+
 impl Serialize for PublicKey {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            String::serialize(&self.to_string(), serializer)
+            String::serialize(
+                &format!("{}{}", Self::PREFIX, &self.to_string()),
+                serializer,
+            )
         } else {
             <[u8; 32]>::serialize(&self.0, serializer)
         }
@@ -26,9 +33,12 @@ impl<'de> Deserialize<'de> for PublicKey {
     {
         if deserializer.is_human_readable() {
             let s = String::deserialize(deserializer)?;
+            let s = s.strip_prefix(Self::PREFIX).ok_or(Error::custom(format!(
+                "key must have prefix '{}'",
+                Self::PREFIX
+            )))?;
             let mut pk = [0; 32];
-            hex::decode_to_slice(s, &mut pk)
-                .map_err(|e| serde::de::Error::custom(format!("{:?}", e)))?;
+            hex::decode_to_slice(s, &mut pk).map_err(|e| Error::custom(format!("{:?}", e)))?;
             Ok(Self::new(pk))
         } else {
             Ok(PublicKey(<[u8; 32]>::deserialize(deserializer)?))
@@ -220,7 +230,10 @@ mod tests {
         let public_key_serialized = serde_json::to_string(&public_key).unwrap();
         let public_key_deserialized: PublicKey =
             serde_json::from_str(&public_key_serialized).unwrap();
-        assert_eq!(public_key_serialized, format!("\"{0}\"", public_key_str));
+        assert_eq!(
+            public_key_serialized,
+            format!("\"ed25519:{0}\"", public_key_str)
+        );
         assert_eq!(public_key_deserialized, public_key);
     }
 
