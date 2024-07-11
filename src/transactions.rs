@@ -198,9 +198,10 @@ impl fmt::Display for FileContractID {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileContract {
+    #[serde(rename = "filesize")]
     pub file_size: u64,
     pub file_merkle_root: Hash256,
     pub window_start: u64,
@@ -208,7 +209,7 @@ pub struct FileContract {
     pub payout: Currency,
     pub valid_proof_outputs: Vec<SiacoinOutput>,
     pub missed_proof_outputs: Vec<SiacoinOutput>,
-    pub unlock_hash: Address,
+    pub unlock_hash: Hash256,
     pub revision_number: u64,
 }
 
@@ -828,22 +829,62 @@ mod tests {
     }
 
     #[test]
-    fn test_siafund_output() {
-        let output = SiafundOutput {
-            claim_start: Currency::new(123),
-            value: Currency::new(67856467336433871),
-            address: Address::parse_string(
-                "addr:000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69",
-            )
-            .unwrap(),
+    fn test_serialize_filecontract() {
+        let contract = FileContract {
+            file_size: 1,
+            file_merkle_root: Hash256::new([
+                1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0,
+            ]),
+            window_start: 2,
+            window_end: 3,
+            payout: Currency::new(456),
+            valid_proof_outputs: vec![SiacoinOutput {
+                value: Currency::new(789),
+                address: Address::new([
+                    2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0,
+                ]),
+            }],
+            missed_proof_outputs: vec![SiacoinOutput {
+                value: Currency::new(101112),
+                address: Address::new([
+                    3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0,
+                ]),
+            }],
+            unlock_hash: Hash256::new([
+                4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0,
+            ]),
+            revision_number: 4,
         };
-        let result = to_bytes(&output).expect("failed to serialize output");
-        let expected: [u8; 56] = [
-            7, 0, 0, 0, 0, 0, 0, 0, 241, 19, 24, 247, 77, 16, 207, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
-            123,
-        ];
-        assert_eq!(result, expected);
+
+        // binary
+        let contract_serialized = to_bytes(&contract).unwrap();
+        let contract_deserialized: FileContract =
+            from_reader(&mut &contract_serialized[..]).unwrap();
+        assert_eq!(
+            contract_serialized,
+            [
+                1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0,
+                2, 0, 0, 0, 0, 0, 0, 0, 1, 200, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3,
+                21, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 138, 248, 3,
+                3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0
+            ],
+        );
+        assert_eq!(contract_deserialized, contract);
+
+        // json
+        let contract_serialized = serde_json::to_string(&contract).unwrap();
+        let contract_deserialized: FileContract =
+            serde_json::from_str(&contract_serialized).unwrap();
+        assert_eq!(contract_serialized, "{\"filesize\":1,\"fileMerkleRoot\":\"h:0101010000000000000000000000000000000000000000000000000000000000\",\"windowStart\":2,\"windowEnd\":3,\"payout\":\"456\",\"validProofOutputs\":[{\"value\":\"789\",\"address\":\"addr:02020200000000000000000000000000000000000000000000000000000000008749787b31db\"}],\"missedProofOutputs\":[{\"value\":\"101112\",\"address\":\"addr:0303030000000000000000000000000000000000000000000000000000000000c596d559a239\"}],\"unlockHash\":\"h:0404040000000000000000000000000000000000000000000000000000000000\",\"revisionNumber\":4}");
+        assert_eq!(contract_deserialized, contract);
     }
 
     #[test]
