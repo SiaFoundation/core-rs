@@ -1,5 +1,6 @@
 use core::num::ParseIntError;
 use core::ops::{Add, Deref, DerefMut, Div, Mul, Sub};
+use std::iter::Sum;
 
 use serde::{Deserialize, Serialize};
 
@@ -197,6 +198,12 @@ impl Div for Currency {
 
     fn div(self, other: Self) -> Self {
         Self(self.0 / other.0)
+    }
+}
+
+impl Sum for Currency {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Currency::new(0), Add::add)
     }
 }
 
