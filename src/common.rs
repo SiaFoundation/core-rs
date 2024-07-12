@@ -1,4 +1,4 @@
-use blake2b_simd::{Hash, Params};
+use blake2b_simd::Params;
 use core::fmt;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
@@ -14,6 +14,106 @@ impl fmt::Display for ChainIndex {
     }
 }
 
+// Macro to implement types used as identifiers which are 32 byte hashes and are
+// serialized with a prefix
+#[macro_export]
+macro_rules! ImplHashID {
+    ($name:ident, $prefix:expr) => {
+        #[derive(Debug, Clone, Copy, PartialEq)]
+        pub struct $name([u8; 32]);
+
+        impl serde::Serialize for $name {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                if serializer.is_human_readable() {
+                    String::serialize(&self.to_string(), serializer)
+                } else {
+                    <[u8; 32]>::serialize(&self.0, serializer)
+                }
+            }
+        }
+
+        impl<'de> serde::Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                if deserializer.is_human_readable() {
+                    let s = String::deserialize(deserializer)?;
+                    $name::parse_string(&s)
+                        .map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
+                } else {
+                    let data = <[u8; 32]>::deserialize(deserializer)?;
+                    Ok($name(data))
+                }
+            }
+        }
+
+        impl $name {
+            // Example method that might be used in serialization/deserialization
+            pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
+                let s = match s.split_once(':') {
+                    Some((_prefix, suffix)) => suffix,
+                    None => s,
+                };
+
+                if s.len() != 64 {
+                    return Err(HexParseError::InvalidLength);
+                }
+
+                let mut data = [0u8; 32];
+                hex::decode_to_slice(s, &mut data).map_err(HexParseError::HexError)?;
+                Ok($name(data))
+            }
+        }
+
+        impl fmt::Display for $name {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "{}:{}", $prefix, hex::encode(self.0))
+            }
+        }
+
+        impl From<blake2b_simd::Hash> for $name {
+            fn from(hash: blake2b_simd::Hash) -> Self {
+                let mut h = [0; 32];
+                h.copy_from_slice(&hash.as_bytes()[..32]);
+                Self(h)
+            }
+        }
+
+        impl From<[u8; 32]> for $name {
+            fn from(data: [u8; 32]) -> Self {
+                $name(data)
+            }
+        }
+
+        impl From<$name> for [u8; 32] {
+            fn from(hash: $name) -> [u8; 32] {
+                hash.0
+            }
+        }
+
+        impl AsRef<[u8; 32]> for $name {
+            fn as_ref(&self) -> &[u8; 32] {
+                &self.0
+            }
+        }
+
+        impl AsRef<[u8]> for $name {
+            fn as_ref(&self) -> &[u8] {
+                &self.0
+            }
+        }
+
+        impl Default for $name {
+            fn default() -> Self {
+                $name([0; 32])
+            }
+        }
+    };
+}
+
+ImplHashID!(Hash256, "h");
+
 /// encapsulates the various errors that can occur when parsing a Sia object
 /// from a string
 #[derive(Debug, PartialEq)]
@@ -23,83 +123,6 @@ pub enum HexParseError {
     InvalidPrefix,
     InvalidChecksum, // not every object has a checksum
     HexError(hex::FromHexError),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct Hash256([u8; 32]);
-
-impl Serialize for Hash256 {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            String::serialize(&self.to_string(), serializer)
-        } else {
-            <[u8; 32]>::serialize(&self.0, serializer)
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Hash256 {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        if deserializer.is_human_readable() {
-            let s = String::deserialize(deserializer)?;
-            Hash256::parse_string(&s).map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
-        } else {
-            let data = <[u8; 32]>::deserialize(deserializer)?;
-            Ok(Hash256(data))
-        }
-    }
-}
-
-impl Hash256 {
-    pub fn new(data: [u8; 32]) -> Self {
-        Hash256(data)
-    }
-
-    pub fn as_bytes(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-
-    pub fn as_array(&self) -> &[u8; 32] {
-        &self.0
-    }
-
-    pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-        let s = match s.split_once(':') {
-            Some((_prefix, suffix)) => suffix,
-            None => s,
-        };
-
-        if s.len() != 64 {
-            return Err(HexParseError::InvalidLength);
-        }
-
-        let mut data = [0u8; 32];
-        hex::decode_to_slice(s, &mut data).map_err(HexParseError::HexError)?;
-        Ok(Hash256(data))
-    }
-}
-
-impl fmt::Display for Hash256 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "h:{}", hex::encode(self.0))
-    }
-}
-
-impl From<Hash> for Hash256 {
-    fn from(hash: Hash) -> Self {
-        let mut h = [0; 32];
-        h.copy_from_slice(&hash.as_bytes()[..32]);
-        Self(h)
-    }
-}
-
-impl AsRef<[u8]> for Hash256 {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
 }
 
 /// An address that can be used to receive UTXOs
