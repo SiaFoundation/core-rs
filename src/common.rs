@@ -31,9 +31,9 @@ pub struct Hash256([u8; 32]);
 impl Serialize for Hash256 {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serializer.serialize_str(&self.to_string())
+            String::serialize(&self.to_string(), serializer)
         } else {
-            self.0.serialize(serializer)
+            <[u8; 32]>::serialize(&self.0, serializer)
         }
     }
 }

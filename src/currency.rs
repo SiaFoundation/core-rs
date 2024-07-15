@@ -17,7 +17,7 @@ pub struct Currency(u128);
 impl Serialize for Currency {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serializer.serialize_str(&self.to_string())
+            String::serialize(&self.to_string(), serializer)
         } else {
             let currency_buf = self.to_be_bytes();
             let i = currency_buf
@@ -41,7 +41,7 @@ impl<'de> Deserialize<'de> for Currency {
                 return Err(serde::de::Error::custom("invalid currency length"));
             }
             let mut buf = [0; 16];
-            buf[..data.len()].copy_from_slice(&data);
+            buf[16 - data.len()..].copy_from_slice(&data);
             Ok(Currency(u128::from_be_bytes(buf)))
         }
     }

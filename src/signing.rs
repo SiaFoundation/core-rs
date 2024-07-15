@@ -3,18 +3,45 @@ use std::time::SystemTime;
 
 use crate::{ChainIndex, Hash256, HexParseError};
 use ed25519_dalek::{Signature as ED25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
-use serde::Serialize;
+use serde::{de::Error, Deserialize, Serialize};
 
 /// An ed25519 public key that can be used to verify a signature
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct PublicKey([u8; 32]);
 
+impl PublicKey {
+    const PREFIX: &'static str = "ed25519:";
+}
+
 impl Serialize for PublicKey {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serializer.serialize_str(&self.to_string())
+            String::serialize(
+                &format!("{}{}", Self::PREFIX, &self.to_string()),
+                serializer,
+            )
         } else {
-            serializer.serialize_bytes(&self.0)
+            <[u8; 32]>::serialize(&self.0, serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for PublicKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            let s = s.strip_prefix(Self::PREFIX).ok_or(Error::custom(format!(
+                "key must have prefix '{}'",
+                Self::PREFIX
+            )))?;
+            let mut pk = [0; 32];
+            hex::decode_to_slice(s, &mut pk).map_err(|e| Error::custom(format!("{:?}", e)))?;
+            Ok(Self::new(pk))
+        } else {
+            Ok(PublicKey(<[u8; 32]>::deserialize(deserializer)?))
         }
     }
 }
@@ -90,9 +117,9 @@ pub struct Signature([u8; 64]);
 impl Serialize for Signature {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serializer.serialize_str(&self.to_string())
+            String::serialize(&self.to_string(), serializer)
         } else {
-            serializer.serialize_bytes(&self.0) // prefixed with length
+            <[u8]>::serialize(&self.0, serializer) // prefixed with length
         }
     }
 }
@@ -183,19 +210,31 @@ impl SigningState {
 
 #[cfg(test)]
 mod tests {
+    use crate::encoding::{from_reader, to_bytes};
+
     use super::*;
 
     #[test]
-    fn test_json_serialize_public_key() {
+    fn test_serialize_publickey() {
+        let public_key_str = "9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6";
+        let public_key = PublicKey::new(hex::decode(public_key_str).unwrap().try_into().unwrap());
+
+        // binary
+        let public_key_serialized = to_bytes(&public_key).unwrap();
+        let public_key_deserialized: PublicKey =
+            from_reader(&mut &public_key_serialized[..]).unwrap();
+        assert_eq!(public_key_serialized, hex::decode(public_key_str).unwrap());
+        assert_eq!(public_key_deserialized, public_key);
+
+        // json
+        let public_key_serialized = serde_json::to_string(&public_key).unwrap();
+        let public_key_deserialized: PublicKey =
+            serde_json::from_str(&public_key_serialized).unwrap();
         assert_eq!(
-            serde_json::to_string(&PublicKey::new([
-                0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda,
-                0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb,
-                0x1d, 0x1c, 0xe1, 0xb6,
-            ]))
-            .unwrap(),
-            "\"9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\""
+            public_key_serialized,
+            format!("\"ed25519:{0}\"", public_key_str)
         );
+        assert_eq!(public_key_deserialized, public_key);
     }
 
     #[test]

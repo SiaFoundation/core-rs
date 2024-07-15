@@ -7,8 +7,8 @@ use crate::HexParseError;
 use blake2b_simd::Params;
 #[deprecated]
 use core::fmt;
-use serde::ser::SerializeStruct;
-use serde::Serialize;
+use serde::de::Error;
+use serde::{Deserialize, Serialize};
 
 /// A generic public key that can be used to spend a utxo or revise a file
 ///  contract
@@ -23,12 +23,31 @@ pub struct UnlockKey {
 impl Serialize for UnlockKey {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serializer.serialize_str(&self.to_string())
+            String::serialize(&self.to_string(), serializer)
         } else {
-            let mut s = serializer.serialize_struct("UnlockKey", 2)?;
-            s.serialize_field("algorithm", &self.algorithm)?;
-            s.serialize_field("public_key", &self.public_key)?;
-            s.end()
+            <(Algorithm, &[u8])>::serialize(&(self.algorithm, self.public_key.as_ref()), serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for UnlockKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            UnlockKey::parse_string(&s).map_err(|e| Error::custom(format!("{:?}", e)))
+        } else {
+            let (algorithm, raw_key) = <(Algorithm, Vec<u8>)>::deserialize(deserializer)?;
+            Ok(Self {
+                algorithm,
+                public_key: PublicKey::new(
+                    raw_key
+                        .try_into()
+                        .map_err(|e| Error::custom(format!("Invalid key: {:?}", e)))?,
+                ),
+            })
         }
     }
 }
@@ -69,11 +88,31 @@ impl Serialize for Algorithm {
         S: serde::Serializer,
     {
         let spec: Specifier = self.as_specifier();
-
         if serializer.is_human_readable() {
-            serializer.serialize_str(&spec.to_string())
+            String::serialize(&self.to_string(), serializer)
         } else {
             spec.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Algorithm {
+    fn deserialize<D>(deserializer: D) -> Result<Algorithm, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            match s.as_str() {
+                "ed25519" => Ok(Algorithm::ED25519),
+                _ => Err(Error::custom("Invalid algorithm")),
+            }
+        } else {
+            let spec = Specifier::deserialize(deserializer)?;
+            match spec {
+                Self::ED25519_SPECIFIER => Ok(Algorithm::ED25519),
+                _ => Err(Error::custom("Invalid algorithm")),
+            }
         }
     }
 }
@@ -117,12 +156,12 @@ impl From<PublicKey> for UnlockKey {
 }
 
 // specifies the conditions for spending an output or revising a file contract.
-#[derive(Debug, PartialEq, Clone, Serialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnlockConditions {
     pub timelock: u64,
     pub public_keys: Vec<UnlockKey>,
-    pub required_signatures: u64,
+    pub signatures_required: u64,
 }
 
 impl UnlockConditions {
@@ -134,7 +173,7 @@ impl UnlockConditions {
         UnlockConditions {
             timelock,
             public_keys,
-            required_signatures,
+            signatures_required: required_signatures,
         }
     }
 
@@ -142,7 +181,7 @@ impl UnlockConditions {
         UnlockConditions {
             timelock: 0,
             public_keys: vec![UnlockKey::new(Algorithm::ED25519, public_key)],
-            required_signatures: 1,
+            signatures_required: 1,
         }
     }
 
@@ -175,7 +214,7 @@ impl UnlockConditions {
             .hash_length(32)
             .to_state()
             .update(LEAF_HASH_PREFIX)
-            .update(&self.required_signatures.to_le_bytes())
+            .update(&self.signatures_required.to_le_bytes())
             .finalize();
 
         let mut leaf = [0u8; 32];
@@ -189,7 +228,7 @@ impl UnlockConditions {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::encoding::to_bytes;
+    use crate::encoding::{from_reader, to_bytes};
     use crate::seed::Seed;
 
     #[test]
@@ -212,57 +251,44 @@ mod tests {
 
     #[test]
     fn test_serialize_unlock_key() {
-        let key: [u8; 32] = [
-            0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda,
-            0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb,
-            0x1d, 0x1c, 0xe1, 0xb6,
-        ];
-        let pk = UnlockKey::new(Algorithm::ED25519, PublicKey::new(key));
+        let unlock_key = UnlockKey::new(
+            Algorithm::ED25519,
+            PublicKey::new([
+                0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda,
+                0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb,
+                0x1d, 0x1c, 0xe1, 0xb6,
+            ]),
+        );
+
+        // binary
+        let unlock_key_serialized = to_bytes(&unlock_key).unwrap();
+        let unlock_key_deserialized: UnlockKey =
+            from_reader(&mut &unlock_key_serialized[..]).unwrap();
         assert_eq!(
-            &to_bytes(&pk).unwrap(),
-            &[
+            unlock_key_serialized,
+            [
                 0x65, 0x64, 0x32, 0x35, 0x35, 0x31, 0x39, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9a, 0xac, 0x1f, 0xfb,
                 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda, 0x1d, 0x56, 0x7e, 0x35,
                 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb, 0x1d, 0x1c, 0xe1, 0xb6
             ]
         );
-    }
+        assert_eq!(unlock_key_deserialized, unlock_key);
 
-    #[test]
-    fn test_json_serialize_unlock_key() {
+        // json
+        let unlock_key_serialized = serde_json::to_string(&unlock_key).unwrap();
+        let unlock_key_deserialized: UnlockKey =
+            serde_json::from_str(&unlock_key_serialized).unwrap();
         assert_eq!(
-            serde_json::to_string(
-                &UnlockKey::parse_string(
-                    "ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6"
-                )
-                .unwrap()
-            )
-            .unwrap(),
+            unlock_key_serialized,
             "\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\""
         );
-    }
-
-    #[test]
-    fn test_json_serialize_unlock_conditions() {
-        let uc = UnlockConditions::new(
-            123,
-            vec![UnlockKey::new(
-                Algorithm::ED25519,
-                PublicKey::new([
-                    0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47,
-                    0xda, 0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a,
-                    0xd0, 0xdb, 0x1d, 0x1c, 0xe1, 0xb6,
-                ]),
-            )],
-            1,
-        );
-        assert_eq!(serde_json::to_string(&uc).unwrap(), "{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"requiredSignatures\":1}")
+        assert_eq!(unlock_key_deserialized, unlock_key);
     }
 
     #[test]
     fn test_serialize_unlock_conditions() {
-        let uc = UnlockConditions::new(
+        let unlock_conditions = UnlockConditions::new(
             123,
             vec![UnlockKey::new(
                 Algorithm::ED25519,
@@ -274,15 +300,28 @@ mod tests {
             )],
             1,
         );
+
+        // binary
+        let unlock_conditions_serialized = to_bytes(&unlock_conditions).unwrap();
+        let unlock_conditions_deserialized: UnlockConditions =
+            from_reader(&mut &unlock_conditions_serialized[..]).unwrap();
         assert_eq!(
-            to_bytes(&uc).unwrap(),
+            unlock_conditions_serialized,
             [
                 123, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 101, 100, 50, 53, 53, 49, 57, 0,
                 0, 0, 0, 0, 0, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 154, 172, 31, 251, 28, 253, 16,
                 121, 168, 198, 200, 123, 71, 218, 29, 86, 126, 53, 185, 114, 52, 153, 60, 40, 140,
                 26, 208, 219, 29, 28, 225, 182, 1, 0, 0, 0, 0, 0, 0, 0
             ]
-        )
+        );
+        assert_eq!(unlock_conditions_deserialized, unlock_conditions);
+
+        // json
+        let unlock_conditions_serialized = serde_json::to_string(&unlock_conditions).unwrap();
+        let unlock_conditions_deserialized: UnlockConditions =
+            serde_json::from_str(&unlock_conditions_serialized).unwrap();
+        assert_eq!(unlock_conditions_serialized, "{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1}");
+        assert_eq!(unlock_conditions_deserialized, unlock_conditions);
     }
 
     #[test]

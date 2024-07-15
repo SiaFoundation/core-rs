@@ -208,11 +208,11 @@ impl SpendPolicy {
             SpendPolicy::UnlockConditions(uc) => {
                 if uc.timelock > signing_state.index.height {
                     return Err(ValidationError::InvalidHeight);
-                } else if uc.required_signatures > 255 {
+                } else if uc.signatures_required > 255 {
                     return Err(ValidationError::InvalidPolicy);
                 }
 
-                let mut remaining = uc.required_signatures;
+                let mut remaining = uc.signatures_required;
                 for pk in uc.public_keys.iter() {
                     let sig = signatures.next().ok_or(ValidationError::MissingSignature)?;
                     if pk.public_key().verify(hash.as_bytes(), sig) {
@@ -268,7 +268,7 @@ impl SpendPolicy {
 impl Serialize for SpendPolicy {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serializer.serialize_str(&self.to_string())
+            String::serialize(&self.to_string(), serializer)
         } else {
             // unknown length since policie are recursive and need custom
             // serialize/deserialize implementations anyway.
@@ -305,7 +305,7 @@ impl fmt::Display for SpendPolicy {
             SpendPolicy::Opaque(addr) => write!(f, "opaque(0x{})", hex::encode(addr)),
             #[allow(deprecated)]
             SpendPolicy::UnlockConditions(uc) => {
-                write!(f, "uc({},{},[", uc.timelock, uc.required_signatures)?;
+                write!(f, "uc({},{},[", uc.timelock, uc.signatures_required)?;
                 for (i, pk) in uc.public_keys.iter().enumerate() {
                     if i > 0 {
                         write!(f, ",")?;
