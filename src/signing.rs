@@ -98,7 +98,7 @@ impl PrivateKey {
 
 impl From<Hash256> for PrivateKey {
     fn from(hash: Hash256) -> Self {
-        PrivateKey::from_seed(hash.as_array())
+        PrivateKey::from_seed(hash.as_ref())
     }
 }
 

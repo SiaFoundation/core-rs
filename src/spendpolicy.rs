@@ -161,7 +161,7 @@ impl SpendPolicy {
                 .next()
                 .ok_or(ValidationError::MissingSignature)
                 .and_then(|sig| {
-                    pk.verify(hash.as_bytes(), sig)
+                    pk.verify(hash.as_ref(), sig)
                         .then_some(())
                         .ok_or(ValidationError::InvalidSignature)
                 }),
@@ -215,7 +215,7 @@ impl SpendPolicy {
                 let mut remaining = uc.signatures_required;
                 for pk in uc.public_keys.iter() {
                     let sig = signatures.next().ok_or(ValidationError::MissingSignature)?;
-                    if pk.public_key().verify(hash.as_bytes(), sig) {
+                    if pk.public_key().verify(hash.as_ref(), sig) {
                         remaining -= 1;
                         if remaining == 0 {
                             break;
@@ -512,7 +512,7 @@ mod tests {
             },
             {
                 let pk = PrivateKey::from_seed(&random());
-                let sig_hash = Hash256::new(random());
+                let sig_hash = Hash256::from(random::<[u8; 32]>());
 
                 PolicyTest {
                     policy: SpendPolicy::PublicKey(pk.public_key()),
@@ -525,14 +525,14 @@ mod tests {
                         hardforks: NetworkHardforks::default(),
                     },
                     hash: sig_hash,
-                    signatures: vec![pk.sign(sig_hash.as_bytes())],
+                    signatures: vec![pk.sign(sig_hash.as_ref())],
                     preimages: vec![],
                     result: Ok(()),
                 }
             },
             {
                 let pk = PrivateKey::from_seed(&random());
-                let sig_hash = Hash256::new(random());
+                let sig_hash = Hash256::from(random::<[u8; 32]>());
 
                 PolicyTest {
                     policy: SpendPolicy::Threshold(
@@ -551,14 +551,14 @@ mod tests {
                         hardforks: NetworkHardforks::default(),
                     },
                     hash: sig_hash,
-                    signatures: vec![pk.sign(sig_hash.as_bytes())],
+                    signatures: vec![pk.sign(sig_hash.as_ref())],
                     preimages: vec![],
                     result: Err(ValidationError::ThresholdNotMet),
                 }
             },
             {
                 let pk = PrivateKey::from_seed(&random());
-                let sig_hash = Hash256::new(random());
+                let sig_hash = Hash256::from(random::<[u8; 32]>());
 
                 PolicyTest {
                     policy: SpendPolicy::Threshold(
@@ -584,7 +584,7 @@ mod tests {
             },
             {
                 let pk = PrivateKey::from_seed(&random());
-                let sig_hash = Hash256::new(random());
+                let sig_hash = Hash256::from(random::<[u8; 32]>());
 
                 PolicyTest {
                     policy: SpendPolicy::Threshold(
@@ -603,14 +603,14 @@ mod tests {
                         hardforks: NetworkHardforks::default(),
                     },
                     hash: sig_hash,
-                    signatures: vec![pk.sign(sig_hash.as_bytes())],
+                    signatures: vec![pk.sign(sig_hash.as_ref())],
                     preimages: vec![],
                     result: Ok(()),
                 }
             },
             {
                 let pk = PrivateKey::from_seed(&random());
-                let sig_hash = Hash256::new(random());
+                let sig_hash = Hash256::from(random::<[u8; 32]>());
 
                 PolicyTest {
                     policy: SpendPolicy::Threshold(
@@ -636,7 +636,7 @@ mod tests {
             },
             {
                 let pk = PrivateKey::from_seed(&random());
-                let sig_hash = Hash256::new(random());
+                let sig_hash = Hash256::from(random::<[u8; 32]>());
 
                 PolicyTest {
                     policy: SpendPolicy::Threshold(
