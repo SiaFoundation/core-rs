@@ -61,7 +61,7 @@ pub struct FileContract {
     pub revision_number: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileContractRevision {
     #[serde(rename = "parentID")]
@@ -76,78 +76,6 @@ pub struct FileContractRevision {
     pub valid_proof_outputs: Vec<SiacoinOutput>,
     pub missed_proof_outputs: Vec<SiacoinOutput>,
     pub unlock_hash: Hash256,
-}
-
-impl Serialize for FileContractRevision {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            #[derive(Serialize)]
-            #[serde(rename_all = "camelCase")]
-            struct WithPayout<'a> {
-                #[serde(rename = "parentID")]
-                parent_id: &'a FileContractID,
-                unlock_conditions: &'a UnlockConditions,
-                revision_number: u64,
-                #[serde(rename = "filesize")]
-                file_size: u64,
-                file_merkle_root: &'a Hash256,
-                window_start: u64,
-                window_end: u64,
-                payout: &'a Currency,
-                valid_proof_outputs: &'a Vec<SiacoinOutput>,
-                missed_proof_outputs: &'a Vec<SiacoinOutput>,
-                unlock_hash: &'a Hash256,
-            }
-            <WithPayout>::serialize(
-                &WithPayout {
-                    parent_id: &self.parent_id,
-                    unlock_conditions: &self.unlock_conditions,
-                    revision_number: self.revision_number,
-                    file_size: self.file_size,
-                    file_merkle_root: &self.file_merkle_root,
-                    window_start: self.window_start,
-                    window_end: self.window_end,
-                    payout: &self.valid_proof_outputs.iter().map(|o| o.value).sum(),
-                    valid_proof_outputs: &self.valid_proof_outputs,
-                    missed_proof_outputs: &self.missed_proof_outputs,
-                    unlock_hash: &self.unlock_hash,
-                },
-                serializer,
-            )
-        } else {
-            #[derive(Serialize)]
-            #[serde(rename_all = "camelCase")]
-            struct WithoutPayout<'a> {
-                #[serde(rename = "parentID")]
-                parent_id: &'a FileContractID,
-                unlock_conditions: &'a UnlockConditions,
-                revision_number: u64,
-                #[serde(rename = "filesize")]
-                file_size: u64,
-                file_merkle_root: &'a Hash256,
-                window_start: u64,
-                window_end: u64,
-                valid_proof_outputs: &'a Vec<SiacoinOutput>,
-                missed_proof_outputs: &'a Vec<SiacoinOutput>,
-                unlock_hash: &'a Hash256,
-            }
-            <WithoutPayout>::serialize(
-                &WithoutPayout {
-                    parent_id: &self.parent_id,
-                    unlock_conditions: &self.unlock_conditions,
-                    revision_number: self.revision_number,
-                    file_size: self.file_size,
-                    file_merkle_root: &self.file_merkle_root,
-                    window_start: self.window_start,
-                    window_end: self.window_end,
-                    valid_proof_outputs: &self.valid_proof_outputs,
-                    missed_proof_outputs: &self.missed_proof_outputs,
-                    unlock_hash: &self.unlock_hash,
-                },
-                serializer,
-            )
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -858,7 +786,7 @@ mod tests {
         let revision_serialized = serde_json::to_string(&revision).unwrap();
         let revision_deserialized: FileContractRevision =
             serde_json::from_str(&revision_serialized).unwrap();
-        assert_eq!(revision_serialized, "{\"parentID\":\"fcid:0908070000000000000000000000000000000000000000000000000000000000\",\"unlockConditions\":{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1},\"revisionNumber\":4,\"filesize\":1,\"fileMerkleRoot\":\"h:0101010000000000000000000000000000000000000000000000000000000000\",\"windowStart\":2,\"windowEnd\":3,\"payout\":\"789\",\"validProofOutputs\":[{\"value\":\"789\",\"address\":\"addr:02020200000000000000000000000000000000000000000000000000000000008749787b31db\"}],\"missedProofOutputs\":[{\"value\":\"789\",\"address\":\"addr:0303030000000000000000000000000000000000000000000000000000000000c596d559a239\"}],\"unlockHash\":\"h:0404040000000000000000000000000000000000000000000000000000000000\"}");
+        assert_eq!(revision_serialized, "{\"parentID\":\"fcid:0908070000000000000000000000000000000000000000000000000000000000\",\"unlockConditions\":{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1},\"revisionNumber\":4,\"filesize\":1,\"fileMerkleRoot\":\"h:0101010000000000000000000000000000000000000000000000000000000000\",\"windowStart\":2,\"windowEnd\":3,\"validProofOutputs\":[{\"value\":\"789\",\"address\":\"addr:02020200000000000000000000000000000000000000000000000000000000008749787b31db\"}],\"missedProofOutputs\":[{\"value\":\"789\",\"address\":\"addr:0303030000000000000000000000000000000000000000000000000000000000c596d559a239\"}],\"unlockHash\":\"h:0404040000000000000000000000000000000000000000000000000000000000\"}");
         assert_eq!(revision_deserialized, revision);
     }
 
