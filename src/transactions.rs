@@ -2,77 +2,15 @@ use crate::encoding::{serialize_array, to_writer, SerializeError};
 use crate::signing::{PrivateKey, Signature, SigningState};
 use crate::specifier::{specifier, Specifier};
 use crate::unlock_conditions::UnlockConditions;
-use crate::{Address, Currency};
+use crate::{Address, Currency, ImplHashID};
 use crate::{Hash256, HexParseError};
 use blake2b_simd::{Params, State};
 use core::fmt;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub struct SiacoinOutputID(Hash256);
+ImplHashID!(SiacoinOutputID, "scoid");
 
-impl Serialize for SiacoinOutputID {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            String::serialize(&self.to_string(), serializer)
-        } else {
-            Hash256::serialize(&self.0, serializer)
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for SiacoinOutputID {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        if deserializer.is_human_readable() {
-            let s = String::deserialize(deserializer)?;
-            SiacoinOutputID::parse_string(&s)
-                .map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
-        } else {
-            let data = Hash256::deserialize(deserializer)?;
-            Ok(SiacoinOutputID(data))
-        }
-    }
-}
-
-impl SiacoinOutputID {
-    pub fn new(data: Hash256) -> Self {
-        SiacoinOutputID(data)
-    }
-
-    pub fn from_bytes(data: [u8; 32]) -> Self {
-        SiacoinOutputID(Hash256::new(data))
-    }
-
-    pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-        let s = match s.split_once(':') {
-            Some((_prefix, suffix)) => suffix,
-            None => s,
-        };
-
-        if s.len() != 64 {
-            return Err(HexParseError::InvalidLength);
-        }
-
-        let mut data = [0u8; 32];
-        hex::decode_to_slice(s, &mut data).map_err(HexParseError::HexError)?;
-        Ok(SiacoinOutputID(Hash256::new(data)))
-    }
-}
-
-impl From<SiacoinOutputID> for Hash256 {
-    fn from(val: SiacoinOutputID) -> Self {
-        val.0
-    }
-}
-
-impl fmt::Display for SiacoinOutputID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "scoid:{}", hex::encode(self.0))
-    }
-}
+ImplHashID!(SiafundOutputID, "sfoid");
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -87,62 +25,6 @@ pub struct SiacoinInput {
 pub struct SiacoinOutput {
     pub value: Currency,
     pub address: Address,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct SiafundOutputID(Hash256);
-
-impl Serialize for SiafundOutputID {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            String::serialize(&self.to_string(), serializer)
-        } else {
-            Hash256::serialize(&self.0, serializer)
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for SiafundOutputID {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        if deserializer.is_human_readable() {
-            let s = String::deserialize(deserializer)?;
-            SiafundOutputID::parse_string(&s)
-                .map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
-        } else {
-            let data = Hash256::deserialize(deserializer)?;
-            Ok(SiafundOutputID(data))
-        }
-    }
-}
-
-impl SiafundOutputID {
-    pub fn as_bytes(&self) -> Hash256 {
-        self.0
-    }
-
-    pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-        let s = match s.split_once(':') {
-            Some((_prefix, suffix)) => suffix,
-            None => s,
-        };
-
-        if s.len() != 64 {
-            return Err(HexParseError::InvalidLength);
-        }
-
-        let mut data = [0u8; 32];
-        hex::decode_to_slice(s, &mut data).map_err(HexParseError::HexError)?;
-        Ok(SiafundOutputID(Hash256::new(data)))
-    }
-}
-
-impl fmt::Display for SiafundOutputID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "sfoid:{}", hex::encode(self.0))
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -162,45 +44,12 @@ pub struct SiafundOutput {
     pub claim_start: Currency,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct FileContractID([u8; 32]);
+ImplHashID!(FileContractID, "fcid");
 
-impl FileContractID {
-    pub fn as_bytes(&self) -> [u8; 32] {
-        self.0
-    }
-
-    pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-        let s = match s.split_once(':') {
-            Some((_prefix, suffix)) => suffix,
-            None => s,
-        };
-
-        if s.len() != 64 {
-            return Err(HexParseError::InvalidLength);
-        }
-
-        let mut data = [0u8; 32];
-        hex::decode_to_slice(s, &mut data).map_err(HexParseError::HexError)?;
-        Ok(FileContractID(data))
-    }
-}
-
-impl AsRef<[u8]> for FileContractID {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl fmt::Display for FileContractID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "fcid:{}", hex::encode(self.0))
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileContract {
+    #[serde(rename = "filesize")]
     pub file_size: u64,
     pub file_merkle_root: Hash256,
     pub window_start: u64,
@@ -208,24 +57,25 @@ pub struct FileContract {
     pub payout: Currency,
     pub valid_proof_outputs: Vec<SiacoinOutput>,
     pub missed_proof_outputs: Vec<SiacoinOutput>,
-    pub unlock_hash: Address,
+    pub unlock_hash: Hash256,
     pub revision_number: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileContractRevision {
     #[serde(rename = "parentID")]
     pub parent_id: FileContractID,
     pub unlock_conditions: UnlockConditions,
     pub revision_number: u64,
+    #[serde(rename = "filesize")]
     pub file_size: u64,
     pub file_merkle_root: Hash256,
     pub window_start: u64,
     pub window_end: u64,
     pub valid_proof_outputs: Vec<SiacoinOutput>,
     pub missed_proof_outputs: Vec<SiacoinOutput>,
-    pub unlock_hash: Address,
+    pub unlock_hash: Hash256,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -274,31 +124,7 @@ pub struct TransactionSignature {
     pub signature: Signature,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct TransactionID([u8; 32]);
-
-impl TransactionID {
-    pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-        let s = match s.split_once(':') {
-            Some((_prefix, suffix)) => suffix,
-            None => s,
-        };
-
-        if s.len() != 64 {
-            return Err(HexParseError::InvalidLength);
-        }
-
-        let mut data = [0u8; 32];
-        hex::decode_to_slice(s, &mut data).map_err(HexParseError::HexError)?;
-        Ok(TransactionID(data))
-    }
-}
-
-impl fmt::Display for TransactionID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "txn:{}", hex::encode(self.0))
-    }
-}
+ImplHashID!(TransactionID, "txn");
 
 #[derive(Default, Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -563,7 +389,7 @@ impl Transaction {
             public_key_index,
             timelock,
             covered_fields: covered_fields.clone(),
-            signature: private_key.sign(sig_hash.as_bytes()),
+            signature: private_key.sign(sig_hash.as_ref()),
         })
     }
 
@@ -582,8 +408,8 @@ impl Transaction {
         state.update(Self::SIACOIN_OUTPUT_ID_PREFIX.as_bytes());
         self.hash_no_sigs(&mut state);
 
-        let h: Hash256 = state.update(&i.to_le_bytes()).finalize().into();
-        SiacoinOutputID(h)
+        let h = state.update(&i.to_le_bytes()).finalize();
+        SiacoinOutputID::from(h)
     }
 
     pub fn siafund_output_id(&self, i: usize) -> SiafundOutputID {
@@ -592,8 +418,8 @@ impl Transaction {
         state.update(Self::SIAFUND_OUTPUT_ID_PREFIX.as_bytes());
         self.hash_no_sigs(&mut state);
 
-        let h: Hash256 = state.update(&i.to_le_bytes()).finalize().into();
-        SiafundOutputID(h)
+        let h = state.update(&i.to_le_bytes()).finalize();
+        SiafundOutputID::from(h)
     }
 }
 
@@ -828,22 +654,140 @@ mod tests {
     }
 
     #[test]
-    fn test_siafund_output() {
-        let output = SiafundOutput {
-            claim_start: Currency::new(123),
-            value: Currency::new(67856467336433871),
-            address: Address::parse_string(
-                "addr:000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69",
-            )
-            .unwrap(),
+    fn test_serialize_filecontract() {
+        let contract = FileContract {
+            file_size: 1,
+            file_merkle_root: Hash256::from([
+                1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0,
+            ]),
+            window_start: 2,
+            window_end: 3,
+            payout: Currency::new(456),
+            valid_proof_outputs: vec![SiacoinOutput {
+                value: Currency::new(789),
+                address: Address::new([
+                    2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0,
+                ]),
+            }],
+            missed_proof_outputs: vec![SiacoinOutput {
+                value: Currency::new(101112),
+                address: Address::new([
+                    3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0,
+                ]),
+            }],
+            unlock_hash: Hash256::from([
+                4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0,
+            ]),
+            revision_number: 4,
         };
-        let result = to_bytes(&output).expect("failed to serialize output");
-        let expected: [u8; 56] = [
-            7, 0, 0, 0, 0, 0, 0, 0, 241, 19, 24, 247, 77, 16, 207, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
-            123,
-        ];
-        assert_eq!(result, expected);
+
+        // binary
+        let contract_serialized = to_bytes(&contract).unwrap();
+        let contract_deserialized: FileContract =
+            from_reader(&mut &contract_serialized[..]).unwrap();
+        assert_eq!(
+            contract_serialized,
+            [
+                1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0,
+                2, 0, 0, 0, 0, 0, 0, 0, 1, 200, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3,
+                21, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 138, 248, 3,
+                3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0
+            ],
+        );
+        assert_eq!(contract_deserialized, contract);
+
+        // json
+        let contract_serialized = serde_json::to_string(&contract).unwrap();
+        let contract_deserialized: FileContract =
+            serde_json::from_str(&contract_serialized).unwrap();
+        assert_eq!(contract_serialized, "{\"filesize\":1,\"fileMerkleRoot\":\"h:0101010000000000000000000000000000000000000000000000000000000000\",\"windowStart\":2,\"windowEnd\":3,\"payout\":\"456\",\"validProofOutputs\":[{\"value\":\"789\",\"address\":\"addr:02020200000000000000000000000000000000000000000000000000000000008749787b31db\"}],\"missedProofOutputs\":[{\"value\":\"101112\",\"address\":\"addr:0303030000000000000000000000000000000000000000000000000000000000c596d559a239\"}],\"unlockHash\":\"h:0404040000000000000000000000000000000000000000000000000000000000\",\"revisionNumber\":4}");
+        assert_eq!(contract_deserialized, contract);
+    }
+
+    #[test]
+    fn test_serialize_filecontract_revision() {
+        let revision = FileContractRevision {
+            parent_id: FileContractID::from([
+                9, 8, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0,
+            ]),
+            file_size: 1,
+            file_merkle_root: Hash256::from([
+                1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0,
+            ]),
+            window_start: 2,
+            window_end: 3,
+            valid_proof_outputs: vec![SiacoinOutput {
+                value: Currency::new(789),
+                address: Address::new([
+                    2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0,
+                ]),
+            }],
+            missed_proof_outputs: vec![SiacoinOutput {
+                value: Currency::new(789),
+                address: Address::new([
+                    3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0,
+                ]),
+            }],
+            unlock_conditions: UnlockConditions::new(
+                123,
+                vec![UnlockKey::new(
+                    Algorithm::ED25519,
+                    PublicKey::new([
+                        0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b,
+                        0x47, 0xda, 0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28,
+                        0x8c, 0x1a, 0xd0, 0xdb, 0x1d, 0x1c, 0xe1, 0xb6,
+                    ]),
+                )],
+                1,
+            ),
+            unlock_hash: Hash256::from([
+                4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0,
+            ]),
+            revision_number: 4,
+        };
+
+        // binary
+        let revision_serialized = to_bytes(&revision).unwrap();
+        let revision_deserialized: FileContractRevision =
+            from_reader(&mut &revision_serialized[..]).unwrap();
+        assert_eq!(
+            revision_serialized,
+            [
+                9, 8, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 123, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 101, 100, 50, 53, 53,
+                49, 57, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 154, 172, 31, 251, 28,
+                253, 16, 121, 168, 198, 200, 123, 71, 218, 29, 86, 126, 53, 185, 114, 52, 153, 60,
+                40, 140, 26, 208, 219, 29, 28, 225, 182, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0,
+                0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0,
+                0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 21, 2, 2, 2, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,
+                0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 21, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 4, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ],
+        );
+        assert_eq!(revision_deserialized, revision);
+
+        // json
+        let revision_serialized = serde_json::to_string(&revision).unwrap();
+        let revision_deserialized: FileContractRevision =
+            serde_json::from_str(&revision_serialized).unwrap();
+        assert_eq!(revision_serialized, "{\"parentID\":\"fcid:0908070000000000000000000000000000000000000000000000000000000000\",\"unlockConditions\":{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1},\"revisionNumber\":4,\"filesize\":1,\"fileMerkleRoot\":\"h:0101010000000000000000000000000000000000000000000000000000000000\",\"windowStart\":2,\"windowEnd\":3,\"validProofOutputs\":[{\"value\":\"789\",\"address\":\"addr:02020200000000000000000000000000000000000000000000000000000000008749787b31db\"}],\"missedProofOutputs\":[{\"value\":\"789\",\"address\":\"addr:0303030000000000000000000000000000000000000000000000000000000000c596d559a239\"}],\"unlockHash\":\"h:0404040000000000000000000000000000000000000000000000000000000000\"}");
+        assert_eq!(revision_deserialized, revision);
     }
 
     #[test]
@@ -894,7 +838,7 @@ mod tests {
 				Transaction {
 					siacoin_inputs: vec![
 						SiacoinInput{
-							parent_id: SiacoinOutputID::from_bytes([32,11,215,36,166,174,135,0,92,215,179,18,74,229,52,154,221,194,213,216,219,47,225,205,251,84,248,2,69,252,37,117]),
+							parent_id: SiacoinOutputID::from([32,11,215,36,166,174,135,0,92,215,179,18,74,229,52,154,221,194,213,216,219,47,225,205,251,84,248,2,69,252,37,117]),
 							unlock_conditions: UnlockConditions::standard_unlock_conditions(pk.public_key()),
 						}
 					],
@@ -921,7 +865,9 @@ mod tests {
             let sig_hash = txn
                 .whole_sig_hash(
                     &state,
-                    &txn.siacoin_inputs[0].parent_id.into(),
+                    &Hash256::from(<SiacoinOutputID as Into<[u8; 32]>>::into(
+                        txn.siacoin_inputs[0].parent_id,
+                    )),
                     0,
                     0,
                     &vec![],
@@ -956,7 +902,7 @@ mod tests {
 				Transaction {
 					siacoin_inputs: vec![
 						SiacoinInput{
-							parent_id: SiacoinOutputID::from_bytes([32,11,215,36,166,174,135,0,92,215,179,18,74,229,52,154,221,194,213,216,219,47,225,205,251,84,248,2,69,252,37,117]),
+							parent_id: SiacoinOutputID::from([32,11,215,36,166,174,135,0,92,215,179,18,74,229,52,154,221,194,213,216,219,47,225,205,251,84,248,2,69,252,37,117]),
 							unlock_conditions: UnlockConditions::standard_unlock_conditions(pk.public_key()),
 						}
 					],
@@ -984,7 +930,9 @@ mod tests {
                 .sign(
                     &state,
                     &CoveredFields::whole_transaction(),
-                    txn.siacoin_inputs[0].parent_id.into(),
+                    Hash256::from(<SiacoinOutputID as Into<[u8; 32]>>::into(
+                        txn.siacoin_inputs[0].parent_id,
+                    )),
                     0,
                     0,
                     &pk,
