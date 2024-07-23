@@ -2,6 +2,12 @@
 name = "sia_core"
 version = "0.0.1"
 edition = "2021"
+repository = "https://github.com/SiaFoundation/core-rs"
+license = "MIT"
+description = "Low-level SDK for interacting with the Sia decentralized storage network"
+authors = [ "The Sia Foundation" ]
+categories = [ "cryptography::cryptocurrencies" ]
+keywords = [ "sia", "decentralized", "blockchain", "depin", "storage" ]
 
 [lib]
 name = "sia_core"
