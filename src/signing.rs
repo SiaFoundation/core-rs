@@ -2,6 +2,7 @@ use core::fmt;
 use std::time::SystemTime;
 
 use crate::{ChainIndex, Hash256, HexParseError};
+use base64::prelude::*;
 use ed25519_dalek::{Signature as ED25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{de::Error, Deserialize, Serialize};
 
@@ -117,9 +118,33 @@ pub struct Signature([u8; 64]);
 impl Serialize for Signature {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            String::serialize(&self.to_string(), serializer)
+            String::serialize(&BASE64_STANDARD.encode(self.0), serializer)
         } else {
             <[u8]>::serialize(&self.0, serializer) // prefixed with length
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Signature {
+    fn deserialize<D>(deserializer: D) -> Result<Signature, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            let sig = BASE64_STANDARD
+                .decode(s)
+                .map_err(|e| D::Error::custom(format!("{:?}", e)))?;
+            if sig.len() != 64 {
+                return Err(D::Error::custom("Invalid signature length"));
+            }
+            Ok(Signature(sig.try_into().unwrap()))
+        } else {
+            let data = <Vec<u8>>::deserialize(deserializer)?;
+            if data.len() != 64 {
+                return Err(D::Error::custom("Invalid signature length"));
+            }
+            Ok(Signature(data.try_into().unwrap()))
         }
     }
 }
@@ -235,19 +260,5 @@ mod tests {
             format!("\"ed25519:{0}\"", public_key_str)
         );
         assert_eq!(public_key_deserialized, public_key);
-    }
-
-    #[test]
-    fn test_json_serialize_signature() {
-        assert_eq!(
-            serde_json::to_string(
-                &Signature::parse_string(
-                    "sig:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b69aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6"
-                )
-                .unwrap()
-            )
-            .unwrap(),
-            "\"sig:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b69aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\""
-        );
     }
 }

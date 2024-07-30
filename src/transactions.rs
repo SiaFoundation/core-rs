@@ -88,17 +88,17 @@ pub struct StorageProof {
     pub proof: Vec<Hash256>,
 }
 
-#[derive(Debug, Default, Clone, Serialize)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoveredFields {
     pub whole_transaction: bool,
     pub siacoin_inputs: Vec<usize>,
     pub siacoin_outputs: Vec<usize>,
-    pub siafund_inputs: Vec<usize>,
-    pub siafund_outputs: Vec<usize>,
     pub file_contracts: Vec<usize>,
     pub file_contract_revisions: Vec<usize>,
     pub storage_proofs: Vec<usize>,
+    pub siafund_inputs: Vec<usize>,
+    pub siafund_outputs: Vec<usize>,
     pub miner_fees: Vec<usize>,
     pub arbitrary_data: Vec<usize>,
     pub signatures: Vec<usize>,
@@ -113,7 +113,7 @@ impl CoveredFields {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionSignature {
     #[serde(rename = "parentID")]
@@ -439,7 +439,7 @@ mod tests {
         cf.siacoin_inputs.push(1);
         cf.siacoin_outputs.push(2);
         cf.siacoin_outputs.push(3);
-        assert_eq!(serde_json::to_string(&cf).unwrap(), "{\"wholeTransaction\":false,\"siacoinInputs\":[1],\"siacoinOutputs\":[2,3],\"siafundInputs\":[],\"siafundOutputs\":[],\"fileContracts\":[],\"fileContractRevisions\":[],\"storageProofs\":[],\"minerFees\":[],\"arbitraryData\":[],\"signatures\":[]}")
+        assert_eq!(serde_json::to_string(&cf).unwrap(), "{\"wholeTransaction\":false,\"siacoinInputs\":[1],\"siacoinOutputs\":[2,3],\"fileContracts\":[],\"fileContractRevisions\":[],\"storageProofs\":[],\"siafundInputs\":[],\"siafundOutputs\":[],\"minerFees\":[],\"arbitraryData\":[],\"signatures\":[]}")
     }
 
     #[test]
@@ -469,18 +469,6 @@ mod tests {
             let result = to_bytes(&cf).expect("failed to serialize covered fields");
             assert_eq!(result, expected);
         }
-    }
-
-    #[test]
-    fn test_json_serialize_transaction_signature() {
-        let txn_sig = TransactionSignature {
-            parent_id: Hash256::default(),
-            public_key_index: 1,
-            timelock: 2,
-            covered_fields: CoveredFields::default(),
-            signature: Signature::new([0u8; 64]),
-        };
-        assert_eq!(serde_json::to_string(&txn_sig).unwrap(), "{\"parentID\":\"h:0000000000000000000000000000000000000000000000000000000000000000\",\"publicKeyIndex\":1,\"timelock\":2,\"coveredFields\":{\"wholeTransaction\":false,\"siacoinInputs\":[],\"siacoinOutputs\":[],\"siafundInputs\":[],\"siafundOutputs\":[],\"fileContracts\":[],\"fileContractRevisions\":[],\"storageProofs\":[],\"minerFees\":[],\"arbitraryData\":[],\"signatures\":[]},\"signature\":\"sig:00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}")
     }
 
     #[test]
@@ -615,6 +603,52 @@ mod tests {
             )
         );
         assert_eq!(output_deserialized, output);
+    }
+
+    #[test]
+    fn test_serialize_transaction_signature() {
+        let signature = TransactionSignature {
+            parent_id: Hash256::parse_string(
+                "b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24",
+            )
+            .unwrap(),
+            public_key_index: 1,
+            timelock: 2,
+            covered_fields: CoveredFields {
+                whole_transaction: true,
+                ..Default::default()
+            },
+            signature: Signature::new([3u8; 64]),
+        };
+
+        // binary
+        let signature_serialized = to_bytes(&signature).unwrap();
+        let signature_deserialized: TransactionSignature =
+            from_reader(&mut &signature_serialized[..]).unwrap();
+        assert_eq!(
+            signature_serialized,
+            [
+                179, 99, 58, 19, 112, 167, 32, 2, 174, 42, 149, 109, 33, 232, 212, 129, 195, 166,
+                158, 20, 102, 51, 71, 12, 246, 37, 236, 216, 63, 222, 170, 36, 1, 0, 0, 0, 0, 0, 0,
+                0, 2, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+                3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+                3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3
+            ]
+        );
+        assert_eq!(signature_deserialized, signature);
+
+        // json
+        let signature_serialized = serde_json::to_string(&signature).unwrap();
+        let signature_deserialized: TransactionSignature =
+            serde_json::from_str(&signature_serialized).unwrap();
+        assert_eq!(
+            signature_serialized,
+            "{\"parentID\":\"h:b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24\",\"publicKeyIndex\":1,\"timelock\":2,\"coveredFields\":{\"wholeTransaction\":true,\"siacoinInputs\":[],\"siacoinOutputs\":[],\"fileContracts\":[],\"fileContractRevisions\":[],\"storageProofs\":[],\"siafundInputs\":[],\"siafundOutputs\":[],\"minerFees\":[],\"arbitraryData\":[],\"signatures\":[]},\"signature\":\"AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAw==\"}",
+        );
+        assert_eq!(signature_deserialized, signature);
     }
 
     #[test]
