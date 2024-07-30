@@ -1,7 +1,6 @@
 use blake2b_simd::Params;
 use core::fmt;
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 use std::fmt::Debug;
 
 pub struct ChainIndex {
@@ -35,13 +34,12 @@ impl Serialize for Leaf {
         if serializer.is_human_readable() {
             String::serialize(&self.to_string(), serializer)
         } else {
-            #[serde_as]
             #[derive(Serialize)]
-            struct BinaryLeaf<'a> {
-                #[serde_as(as = "[_; 64]")]
-                data: &'a [u8; 64],
+            struct BinaryLeaf {
+                #[serde(with = "serde_big_array::BigArray")]
+                data: [u8; 64],
             }
-            BinaryLeaf { data: &self.0 }.serialize(serializer)
+            BinaryLeaf { data: self.0 }.serialize(serializer)
         }
     }
 }
@@ -59,10 +57,9 @@ impl<'de> Deserialize<'de> for Leaf {
             }
             Ok(Leaf(data.try_into().unwrap()))
         } else {
-            #[serde_as]
             #[derive(Deserialize)]
             struct BinaryLeaf {
-                #[serde_as(as = "[_; 64]")]
+                #[serde(with = "serde_big_array::BigArray")]
                 data: [u8; 64],
             }
             let leaf = BinaryLeaf::deserialize(deserializer)?;
