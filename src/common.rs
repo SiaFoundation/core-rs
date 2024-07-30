@@ -1,6 +1,7 @@
 use blake2b_simd::Params;
 use core::fmt;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use std::fmt::Debug;
 
 pub struct ChainIndex {
@@ -11,6 +12,62 @@ pub struct ChainIndex {
 impl fmt::Display for ChainIndex {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}:{}", self.height, hex::encode(self.id))
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Leaf([u8; 64]);
+
+impl From<[u8; 64]> for Leaf {
+    fn from(data: [u8; 64]) -> Self {
+        Leaf(data)
+    }
+}
+
+impl fmt::Display for Leaf {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
+
+impl Serialize for Leaf {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            String::serialize(&self.to_string(), serializer)
+        } else {
+            #[serde_as]
+            #[derive(Serialize)]
+            struct BinaryLeaf<'a> {
+                #[serde_as(as = "[_; 64]")]
+                data: &'a [u8; 64],
+            }
+            BinaryLeaf { data: &self.0 }.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Leaf {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            let data = hex::decode(s).map_err(|e| serde::de::Error::custom(format!("{:?}", e)))?;
+            if data.len() != 64 {
+                return Err(serde::de::Error::custom("invalid length"));
+            }
+            Ok(Leaf(data.try_into().unwrap()))
+        } else {
+            #[serde_as]
+            #[derive(Deserialize)]
+            struct BinaryLeaf {
+                #[serde_as(as = "[_; 64]")]
+                data: [u8; 64],
+            }
+            let leaf = BinaryLeaf::deserialize(deserializer)?;
+            Ok(Leaf(leaf.data))
+        }
     }
 }
 
