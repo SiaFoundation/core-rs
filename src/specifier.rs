@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 pub const SPECIFIER_SIZE: usize = 16;
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Specifier([u8; SPECIFIER_SIZE]);
 
 impl Specifier {
