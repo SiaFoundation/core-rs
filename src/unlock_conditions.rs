@@ -60,19 +60,19 @@ impl fmt::Display for UnlockKey {
 
 /// An enum representing algorithms supported for signing and verifying
 /// a v1 unlock key
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Algorithm {
-    ED25519,
-}
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct Algorithm(Specifier);
 
 impl Algorithm {
     const ED25519_SPECIFIER: Specifier = specifier!("ed25519");
 
     /// Returns the corresponding Specifier for the Algorithm
     pub fn as_specifier(&self) -> Specifier {
-        match self {
-            Algorithm::ED25519 => Self::ED25519_SPECIFIER,
-        }
+        self.0
+    }
+
+    pub fn ed25519() -> Algorithm {
+        Algorithm(Self::ED25519_SPECIFIER)
     }
 }
 
@@ -104,13 +104,13 @@ impl<'de> Deserialize<'de> for Algorithm {
         if deserializer.is_human_readable() {
             let s = String::deserialize(deserializer)?;
             match s.as_str() {
-                "ed25519" => Ok(Algorithm::ED25519),
+                "ed25519" => Ok(Algorithm::ed25519()),
                 _ => Err(Error::custom("Invalid algorithm")),
             }
         } else {
             let spec = Specifier::deserialize(deserializer)?;
             match spec {
-                Self::ED25519_SPECIFIER => Ok(Algorithm::ED25519),
+                Self::ED25519_SPECIFIER => Ok(Algorithm::ed25519()),
                 _ => Err(Error::custom("Invalid algorithm")),
             }
         }
@@ -131,7 +131,7 @@ impl UnlockKey {
     pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
         let (prefix, key_str) = s.split_once(':').ok_or(HexParseError::MissingPrefix)?;
         let algorithm = match prefix {
-            "ed25519" => Algorithm::ED25519,
+            "ed25519" => Algorithm::ed25519(),
             _ => return Err(HexParseError::InvalidPrefix),
         };
 
@@ -151,7 +151,7 @@ impl UnlockKey {
 
 impl From<PublicKey> for UnlockKey {
     fn from(val: PublicKey) -> Self {
-        UnlockKey::new(Algorithm::ED25519, val)
+        UnlockKey::new(Algorithm::ed25519(), val)
     }
 }
 
@@ -180,7 +180,7 @@ impl UnlockConditions {
     pub fn standard_unlock_conditions(public_key: PublicKey) -> UnlockConditions {
         UnlockConditions {
             timelock: 0,
-            public_keys: vec![UnlockKey::new(Algorithm::ED25519, public_key)],
+            public_keys: vec![UnlockKey::new(Algorithm::ed25519(), public_key)],
             signatures_required: 1,
         }
     }
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn test_sia_serialize_algorithm() {
-        let algorithm = Algorithm::ED25519;
+        let algorithm = Algorithm::ed25519();
         let bytes = to_bytes(&algorithm).unwrap();
         let expected: [u8; 16] = [
             b'e', b'd', b'2', b'5', b'5', b'1', b'9', 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -244,7 +244,7 @@ mod tests {
     #[test]
     fn test_json_serialize_algorithm() {
         assert_eq!(
-            serde_json::to_string(&Algorithm::ED25519).unwrap(),
+            serde_json::to_string(&Algorithm::ed25519()).unwrap(),
             "\"ed25519\""
         )
     }
@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn test_serialize_unlock_key() {
         let unlock_key = UnlockKey::new(
-            Algorithm::ED25519,
+            Algorithm::ed25519(),
             PublicKey::new([
                 0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda,
                 0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb,
@@ -291,7 +291,7 @@ mod tests {
         let unlock_conditions = UnlockConditions::new(
             123,
             vec![UnlockKey::new(
-                Algorithm::ED25519,
+                Algorithm::ed25519(),
                 PublicKey::new([
                     0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47,
                     0xda, 0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a,
