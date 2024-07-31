@@ -14,6 +14,60 @@ impl fmt::Display for ChainIndex {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct Leaf([u8; 64]);
+
+impl From<[u8; 64]> for Leaf {
+    fn from(data: [u8; 64]) -> Self {
+        Leaf(data)
+    }
+}
+
+impl fmt::Display for Leaf {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
+
+impl Serialize for Leaf {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            String::serialize(&self.to_string(), serializer)
+        } else {
+            #[derive(Serialize)]
+            struct BinaryLeaf {
+                #[serde(with = "serde_big_array::BigArray")]
+                data: [u8; 64],
+            }
+            BinaryLeaf { data: self.0 }.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Leaf {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            let data = hex::decode(s).map_err(|e| serde::de::Error::custom(format!("{:?}", e)))?;
+            if data.len() != 64 {
+                return Err(serde::de::Error::custom("invalid length"));
+            }
+            Ok(Leaf(data.try_into().unwrap()))
+        } else {
+            #[derive(Deserialize)]
+            struct BinaryLeaf {
+                #[serde(with = "serde_big_array::BigArray")]
+                data: [u8; 64],
+            }
+            let leaf = BinaryLeaf::deserialize(deserializer)?;
+            Ok(Leaf(leaf.data))
+        }
+    }
+}
+
 // Macro to implement types used as identifiers which are 32 byte hashes and are
 // serialized with a prefix
 #[macro_export]

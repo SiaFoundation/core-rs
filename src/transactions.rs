@@ -1,8 +1,8 @@
-use crate::encoding::{serialize_array, to_writer, SerializeError};
+use crate::encoding::{to_writer, SerializeError};
 use crate::signing::{PrivateKey, Signature, SigningState};
 use crate::specifier::{specifier, Specifier};
 use crate::unlock_conditions::UnlockConditions;
-use crate::{Address, Currency, ImplHashID};
+use crate::{Address, Currency, ImplHashID, Leaf};
 use crate::{Hash256, HexParseError};
 use blake2b_simd::{Params, State};
 use core::fmt;
@@ -78,13 +78,12 @@ pub struct FileContractRevision {
     pub unlock_hash: Hash256,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageProof {
     #[serde(rename = "parentID")]
     pub parent_id: FileContractID,
-    #[serde(serialize_with = "serialize_array")]
-    pub leaf: [u8; 64],
+    pub leaf: Leaf,
     pub proof: Vec<Hash256>,
 }
 
@@ -788,6 +787,57 @@ mod tests {
             serde_json::from_str(&revision_serialized).unwrap();
         assert_eq!(revision_serialized, "{\"parentID\":\"fcid:0908070000000000000000000000000000000000000000000000000000000000\",\"unlockConditions\":{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1},\"revisionNumber\":4,\"filesize\":1,\"fileMerkleRoot\":\"h:0101010000000000000000000000000000000000000000000000000000000000\",\"windowStart\":2,\"windowEnd\":3,\"validProofOutputs\":[{\"value\":\"789\",\"address\":\"addr:02020200000000000000000000000000000000000000000000000000000000008749787b31db\"}],\"missedProofOutputs\":[{\"value\":\"789\",\"address\":\"addr:0303030000000000000000000000000000000000000000000000000000000000c596d559a239\"}],\"unlockHash\":\"h:0404040000000000000000000000000000000000000000000000000000000000\"}");
         assert_eq!(revision_deserialized, revision);
+    }
+
+    #[test]
+    fn test_serialize_storage_proof() {
+        let storage_proof = StorageProof {
+            parent_id: FileContractID::parse_string(
+                "b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24",
+            )
+            .unwrap(),
+            leaf: Leaf::from([
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+                24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
+                45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64,
+            ]),
+            proof: vec![
+                Hash256::parse_string(
+                    "0102030000000000000000000000000000000000000000000000000000000000",
+                )
+                .unwrap(),
+                Hash256::parse_string(
+                    "0405060000000000000000000000000000000000000000000000000000000000",
+                )
+                .unwrap(),
+            ],
+        };
+
+        // binary
+        let storage_proof_serialized = to_bytes(&storage_proof).unwrap();
+        let storage_proof_deserialized: StorageProof =
+            from_reader(&mut &storage_proof_serialized[..]).unwrap();
+        assert_eq!(
+            storage_proof_serialized,
+            [
+                179, 99, 58, 19, 112, 167, 32, 2, 174, 42, 149, 109, 33, 232, 212, 129, 195, 166,
+                158, 20, 102, 51, 71, 12, 246, 37, 236, 216, 63, 222, 170, 36, 1, 2, 3, 4, 5, 6, 7,
+                8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+                29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
+                50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 2, 0, 0, 0, 0, 0, 0, 0,
+                1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 4, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0
+            ]
+        );
+        assert_eq!(storage_proof_deserialized, storage_proof);
+
+        // json
+        let storage_proof_serialized = serde_json::to_string(&storage_proof).unwrap();
+        let storage_proof_deserialized: StorageProof =
+            serde_json::from_str(&storage_proof_serialized).unwrap();
+        assert_eq!(storage_proof_serialized, "{\"parentID\":\"fcid:b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24\",\"leaf\":\"0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40\",\"proof\":[\"h:0102030000000000000000000000000000000000000000000000000000000000\",\"h:0405060000000000000000000000000000000000000000000000000000000000\"]}");
+        assert_eq!(storage_proof_deserialized, storage_proof);
     }
 
     #[test]

@@ -21,22 +21,6 @@ pub enum Error {
     IO(#[from] io::Error),
 }
 
-// Helper function to serialize array of fixed size. Serde only implements
-// Serialize for arrays up to 32 elements in size. The reason being that Rust
-// didn't have const generics back then and now they can't easily upgrade
-// without breaking code.
-pub fn serialize_array<const N: usize, S, T>(t: &[T; N], serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: ser::Serializer,
-    T: Serialize,
-{
-    let mut ser_tuple = serializer.serialize_tuple(N)?;
-    for elem in t {
-        ser_tuple.serialize_element(elem)?;
-    }
-    ser_tuple.end()
-}
-
 // Implement ser::Error for Error
 impl ser::Error for Error {
     fn custom<T>(msg: T) -> Self
