@@ -243,7 +243,7 @@ impl Transaction {
         }
     }
 
-    fn whole_sig_hash(
+    pub(crate) fn whole_sig_hash(
         &self,
         chain: &SigningState,
         parent_id: &Hash256,
@@ -306,6 +306,11 @@ impl Transaction {
         state.update(&timelock.to_le_bytes());
 
         for &i in covered_sigs {
+            if i >= self.signatures.len() {
+                return Err(SerializeError::Custom(
+                    "signature index out of bounds".to_string(),
+                ));
+            }
             to_writer(&mut state, &self.signatures[i])?;
         }
 
@@ -429,6 +434,7 @@ mod tests {
     use crate::unlock_conditions::{Algorithm, UnlockKey};
     use crate::ChainIndex;
     use std::time::SystemTime;
+    use std::vec;
 
     use super::*;
 
