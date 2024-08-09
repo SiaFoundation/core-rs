@@ -317,7 +317,7 @@ impl Transaction {
         Ok(state.finalize().into())
     }
 
-    fn partial_sig_hash(
+    pub(crate) fn partial_sig_hash(
         &self,
         chain: &SigningState,
         covered_fields: &CoveredFields,
@@ -325,41 +325,86 @@ impl Transaction {
         let mut state = Params::new().hash_length(32).to_state();
 
         for &i in covered_fields.siacoin_inputs.iter() {
+            if i >= self.siacoin_inputs.len() {
+                return Err(SerializeError::Custom(
+                    "siacoin_inputs index out of bounds".to_string(),
+                ));
+            }
             state.update(chain.replay_prefix());
             to_writer(&mut state, &self.siacoin_inputs[i])?;
         }
 
         for &i in covered_fields.siacoin_outputs.iter() {
+            if i >= self.siacoin_outputs.len() {
+                return Err(SerializeError::Custom(
+                    "siacoin_outputs index out of bounds".to_string(),
+                ));
+            }
             to_writer(&mut state, &self.siacoin_outputs[i])?;
         }
 
         for &i in covered_fields.file_contracts.iter() {
+            if i >= self.file_contracts.len() {
+                return Err(SerializeError::Custom(
+                    "file_contracts index out of bounds".to_string(),
+                ));
+            }
             to_writer(&mut state, &self.file_contracts[i])?;
         }
 
         for &i in covered_fields.file_contract_revisions.iter() {
+            if i >= self.file_contract_revisions.len() {
+                return Err(SerializeError::Custom(
+                    "file_contract_revisions index out of bounds".to_string(),
+                ));
+            }
             to_writer(&mut state, &self.file_contract_revisions[i])?;
         }
 
         for &i in covered_fields.storage_proofs.iter() {
+            if i >= self.storage_proofs.len() {
+                return Err(SerializeError::Custom(
+                    "storage_proofs index out of bounds".to_string(),
+                ));
+            }
             to_writer(&mut state, &self.storage_proofs[i])?;
         }
 
         for &i in covered_fields.siafund_inputs.iter() {
+            if i >= self.siafund_inputs.len() {
+                return Err(SerializeError::Custom(
+                    "siafund_inputs index out of bounds".to_string(),
+                ));
+            }
             to_writer(&mut state, &self.siafund_inputs[i])?;
             state.update(chain.replay_prefix());
         }
 
         for &i in covered_fields.siafund_outputs.iter() {
+            if i >= self.siafund_outputs.len() {
+                return Err(SerializeError::Custom(
+                    "siafund_outputs index out of bounds".to_string(),
+                ));
+            }
             state.update(chain.replay_prefix());
             to_writer(&mut state, &self.siafund_outputs[i])?;
         }
 
         for &i in covered_fields.miner_fees.iter() {
+            if i >= self.miner_fees.len() {
+                return Err(SerializeError::Custom(
+                    "miner_fees index out of bounds".to_string(),
+                ));
+            }
             to_writer(&mut state, &self.miner_fees[i])?;
         }
 
         for &i in covered_fields.arbitrary_data.iter() {
+            if i >= self.arbitrary_data.len() {
+                return Err(SerializeError::Custom(
+                    "arbitrary_data index out of bounds".to_string(),
+                ));
+            }
             state.update(&(self.arbitrary_data[i].len() as u64).to_le_bytes());
             state.update(&self.arbitrary_data[i]);
         }

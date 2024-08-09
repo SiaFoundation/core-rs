@@ -392,25 +392,80 @@ mod tests {
                     160, 202, 228, 109, 158, 188, 86, 44, 25, 153, 254, 208, 12,
                 ]),
             },
+            TestCase {
+                height: 1,
+                whole_transaction: false,
+                signature: Signature([
+                    18, 87, 53, 192, 122, 197, 115, 11, 218, 189, 88, 131, 88, 113, 251, 213, 20,
+                    219, 69, 72, 111, 143, 80, 125, 239, 9, 47, 14, 220, 37, 157, 53, 124, 148, 13,
+                    183, 36, 89, 22, 178, 199, 115, 141, 130, 111, 2, 117, 47, 42, 30, 117, 168,
+                    245, 203, 197, 117, 171, 215, 92, 82, 45, 33, 254, 4,
+                ]),
+            },
+            TestCase {
+                height: 10,
+                whole_transaction: false,
+                signature: Signature([
+                    163, 15, 6, 216, 30, 166, 45, 126, 64, 1, 189, 71, 242, 107, 13, 12, 162, 241,
+                    253, 31, 137, 63, 66, 120, 227, 123, 214, 124, 164, 180, 72, 0, 5, 47, 3, 93,
+                    104, 226, 246, 60, 86, 176, 194, 146, 8, 2, 54, 2, 165, 218, 210, 158, 38, 181,
+                    55, 80, 110, 93, 241, 242, 204, 97, 182, 5,
+                ]),
+            },
+            TestCase {
+                height: 100,
+                whole_transaction: false,
+                signature: Signature([
+                    148, 148, 144, 23, 66, 7, 203, 9, 145, 219, 169, 84, 22, 211, 63, 109, 154,
+                    143, 72, 252, 229, 129, 6, 154, 109, 105, 129, 235, 214, 152, 142, 169, 144,
+                    239, 26, 212, 142, 32, 228, 229, 224, 164, 52, 45, 215, 253, 136, 234, 184, 32,
+                    185, 104, 154, 59, 39, 111, 97, 182, 203, 201, 254, 28, 77, 1,
+                ]),
+            },
+            TestCase {
+                height: 1000,
+                whole_transaction: false,
+                signature: Signature([
+                    123, 179, 238, 178, 8, 168, 8, 11, 57, 230, 154, 219, 59, 46, 212, 180, 92, 60,
+                    10, 138, 105, 9, 152, 151, 221, 168, 215, 86, 185, 241, 228, 81, 96, 196, 136,
+                    188, 191, 236, 213, 66, 126, 225, 37, 8, 177, 135, 51, 193, 49, 20, 28, 176,
+                    224, 10, 104, 237, 250, 17, 214, 11, 244, 159, 202, 14,
+                ]),
+            },
+            TestCase {
+                height: 10000,
+                whole_transaction: false,
+                signature: Signature([
+                    123, 179, 238, 178, 8, 168, 8, 11, 57, 230, 154, 219, 59, 46, 212, 180, 92, 60,
+                    10, 138, 105, 9, 152, 151, 221, 168, 215, 86, 185, 241, 228, 81, 96, 196, 136,
+                    188, 191, 236, 213, 66, 126, 225, 37, 8, 177, 135, 51, 193, 49, 20, 28, 176,
+                    224, 10, 104, 237, 250, 17, 214, 11, 244, 159, 202, 14,
+                ]),
+            },
         ];
 
         for tc in test_cases {
             // update state
             state.index.height = tc.height;
 
+            // covered fields are either the whole transaction or all fields
+            let covered_fields = if tc.whole_transaction {
+                CoveredFields {
+                    whole_transaction: tc.whole_transaction,
+                    ..Default::default()
+                }
+            } else {
+                CoveredFields {
+                    siacoin_inputs: vec![0],
+                    siacoin_outputs: vec![0, 2, 4, 6, 8, 10],
+                    miner_fees: vec![0],
+                    ..Default::default()
+                }
+            };
+
             // sign and check signature
             let signature = unsigned_transaction
-                .sign(
-                    &state,
-                    &CoveredFields {
-                        whole_transaction: tc.whole_transaction,
-                        ..Default::default()
-                    },
-                    Hash256::default(),
-                    1,
-                    100,
-                    &key,
-                )
+                .sign(&state, &covered_fields, Hash256::default(), 1, 100, &key)
                 .unwrap();
             assert_eq!(signature.signature, tc.signature);
 
@@ -420,7 +475,9 @@ mod tests {
                     .whole_sig_hash(&state, &Hash256::default(), 1, 100, &Vec::new())
                     .unwrap()
             } else {
-                unimplemented!("not implemented yet");
+                unsigned_transaction
+                    .partial_sig_hash(&state, &covered_fields)
+                    .unwrap()
             };
             assert!(key
                 .public_key()
