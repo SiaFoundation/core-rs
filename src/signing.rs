@@ -243,7 +243,7 @@ impl SigningState {
 mod tests {
     use crate::{
         encoding::{from_reader, to_bytes},
-        transactions::Transaction,
+        transactions::{CoveredFields, Transaction},
     };
 
     use super::*;
@@ -336,18 +336,15 @@ mod tests {
         );
 
         // various test-cases for the individual hardfork heights
-        struct test_case {
+        struct TestCase {
             height: u64,
-            sig_hash: Hash256,
+            whole_transaction: bool,
             signature: Signature,
         }
         let test_cases = [
-            test_case {
+            TestCase {
                 height: 1,
-                sig_hash: Hash256::from([
-                    103, 85, 177, 230, 217, 250, 31, 44, 58, 216, 0, 141, 201, 11, 110, 89, 30,
-                    160, 234, 205, 28, 54, 126, 107, 70, 161, 172, 76, 140, 183, 82, 174,
-                ]),
+                whole_transaction: true,
                 signature: Signature([
                     117, 204, 154, 199, 43, 203, 72, 68, 205, 215, 177, 228, 209, 153, 249, 13, 54,
                     36, 52, 94, 246, 174, 180, 164, 85, 246, 148, 87, 77, 187, 114, 213, 150, 104,
@@ -355,12 +352,9 @@ mod tests {
                     242, 220, 180, 120, 194, 162, 144, 26, 167, 193, 42, 29, 5,
                 ]),
             },
-            test_case {
+            TestCase {
                 height: 10,
-                sig_hash: Hash256::from([
-                    71, 70, 128, 193, 162, 182, 181, 193, 105, 235, 111, 161, 28, 211, 124, 226,
-                    141, 248, 216, 55, 70, 214, 50, 212, 133, 71, 147, 254, 58, 38, 0, 227,
-                ]),
+                whole_transaction: true,
                 signature: Signature([
                     41, 220, 18, 178, 144, 169, 73, 153, 44, 108, 77, 39, 40, 58, 162, 188, 93, 74,
                     99, 155, 97, 132, 198, 199, 248, 65, 1, 102, 238, 150, 59, 198, 230, 103, 60,
@@ -368,12 +362,9 @@ mod tests {
                     98, 103, 42, 213, 49, 126, 193, 245, 14, 160, 164, 9,
                 ]),
             },
-            test_case {
+            TestCase {
                 height: 100,
-                sig_hash: Hash256::from([
-                    91, 168, 132, 209, 109, 191, 250, 156, 220, 211, 230, 231, 96, 68, 19, 148, 26,
-                    174, 49, 7, 67, 170, 90, 71, 77, 127, 18, 136, 110, 222, 176, 37,
-                ]),
+                whole_transaction: true,
                 signature: Signature([
                     141, 171, 186, 219, 207, 43, 207, 142, 220, 173, 184, 33, 57, 129, 77, 112, 28,
                     205, 107, 68, 114, 149, 208, 30, 145, 124, 121, 61, 218, 25, 82, 206, 157, 78,
@@ -381,12 +372,9 @@ mod tests {
                     24, 63, 158, 82, 8, 25, 118, 170, 41, 229, 185, 122, 11,
                 ]),
             },
-            test_case {
+            TestCase {
                 height: 1000,
-                sig_hash: Hash256::from([
-                    191, 24, 139, 35, 9, 235, 100, 7, 193, 151, 234, 37, 216, 152, 67, 2, 195, 192,
-                    216, 181, 41, 167, 91, 63, 226, 84, 194, 207, 0, 26, 67, 45,
-                ]),
+                whole_transaction: true,
                 signature: Signature([
                     76, 165, 116, 181, 135, 120, 83, 45, 42, 22, 51, 45, 210, 190, 161, 128, 30,
                     235, 252, 254, 180, 206, 62, 223, 226, 221, 185, 55, 33, 69, 161, 45, 254, 120,
@@ -394,12 +382,9 @@ mod tests {
                     160, 202, 228, 109, 158, 188, 86, 44, 25, 153, 254, 208, 12,
                 ]),
             },
-            test_case {
+            TestCase {
                 height: 10000,
-                sig_hash: Hash256::from([
-                    191, 24, 139, 35, 9, 235, 100, 7, 193, 151, 234, 37, 216, 152, 67, 2, 195, 192,
-                    216, 181, 41, 167, 91, 63, 226, 84, 194, 207, 0, 26, 67, 45,
-                ]),
+                whole_transaction: true,
                 signature: Signature([
                     76, 165, 116, 181, 135, 120, 83, 45, 42, 22, 51, 45, 210, 190, 161, 128, 30,
                     235, 252, 254, 180, 206, 62, 223, 226, 221, 185, 55, 33, 69, 161, 45, 254, 120,
@@ -413,22 +398,33 @@ mod tests {
             // update state
             state.index.height = tc.height;
 
-            // sig hash
-            let sig_hash = unsigned_transaction
-                .whole_sig_hash(
+            // sign and check signature
+            let signature = unsigned_transaction
+                .sign(
                     &state,
-                    &Hash256::default(), // empty hash
-                    1,                   // second key
+                    &CoveredFields {
+                        whole_transaction: tc.whole_transaction,
+                        ..Default::default()
+                    },
+                    Hash256::default(),
+                    1,
                     100,
-                    &Vec::new(), // no sigs
+                    &key,
                 )
                 .unwrap();
-            assert_eq!(sig_hash, tc.sig_hash,);
+            assert_eq!(signature.signature, tc.signature);
 
-            // sign and verify
-            let signature = key.sign(sig_hash.as_ref());
-            assert_eq!(signature, tc.signature);
-            assert!(key.public_key().verify(&sig_hash.as_ref(), &signature));
+            // manually build the sig_hash and check the signature
+            let sig_hash = if tc.whole_transaction {
+                unsigned_transaction
+                    .whole_sig_hash(&state, &Hash256::default(), 1, 100, &Vec::new())
+                    .unwrap()
+            } else {
+                unimplemented!("not implemented yet");
+            };
+            assert!(key
+                .public_key()
+                .verify(&sig_hash.as_ref(), &signature.signature));
         }
     }
 }
