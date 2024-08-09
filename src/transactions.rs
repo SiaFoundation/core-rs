@@ -125,7 +125,7 @@ pub struct TransactionSignature {
 
 ImplHashID!(TransactionID, "txn");
 
-#[derive(Default, Debug, Clone, Serialize)]
+#[derive(Default, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Transaction {
     pub siacoin_inputs: Vec<SiacoinInput>,
@@ -1025,5 +1025,42 @@ mod tests {
 
             assert_eq!(sig.signature.to_string(), expected)
         }
+    }
+
+    #[test]
+    fn test_serialize_transaction() {
+        let transaction = Transaction {
+            siacoin_inputs: Vec::new(),
+            siacoin_outputs: Vec::new(),
+            file_contracts: Vec::new(),
+            file_contract_revisions: Vec::new(),
+            storage_proofs: Vec::new(),
+            siafund_inputs: Vec::new(),
+            siafund_outputs: Vec::new(),
+            miner_fees: Vec::new(),
+            arbitrary_data: Vec::new(),
+            signatures: Vec::new(),
+        };
+
+        // binary
+        let transaction_serialized = to_bytes(&transaction).unwrap();
+        let transaction_deserialized: Transaction =
+            from_reader(&mut &transaction_serialized[..]).unwrap();
+        assert_eq!(
+            transaction_serialized,
+            [
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ]
+        );
+        assert_eq!(transaction_deserialized, transaction);
+
+        // json
+        let transaction_serialized = serde_json::to_string(&transaction).unwrap();
+        let transaction_deserialized: Transaction =
+            serde_json::from_str(&transaction_serialized).unwrap();
+        assert_eq!(transaction_serialized, "{\"siacoinInputs\":[],\"siacoinOutputs\":[],\"fileContracts\":[],\"fileContractRevisions\":[],\"storageProofs\":[],\"siafundInputs\":[],\"siafundOutputs\":[],\"minerFees\":[],\"arbitraryData\":[],\"signatures\":[]}");
+        assert_eq!(transaction_deserialized, transaction);
     }
 }
