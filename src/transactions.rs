@@ -409,6 +409,15 @@ impl Transaction {
             state.update(&self.arbitrary_data[i]);
         }
 
+        for &i in covered_fields.signatures.iter() {
+            if i >= self.signatures.len() {
+                return Err(SerializeError::Custom(
+                    "signatures index out of bounds".to_string(),
+                ));
+            }
+            to_writer(&mut state, &self.signatures[i])?;
+        }
+
         Ok(state.finalize().into())
     }
 
