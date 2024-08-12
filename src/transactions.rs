@@ -376,8 +376,8 @@ impl Transaction {
                     "siafund_inputs index out of bounds".to_string(),
                 ));
             }
-            to_writer(&mut state, &self.siafund_inputs[i])?;
             state.update(chain.replay_prefix());
+            to_writer(&mut state, &self.siafund_inputs[i])?;
         }
 
         for &i in covered_fields.siafund_outputs.iter() {
@@ -386,7 +386,6 @@ impl Transaction {
                     "siafund_outputs index out of bounds".to_string(),
                 ));
             }
-            state.update(chain.replay_prefix());
             to_writer(&mut state, &self.siafund_outputs[i])?;
         }
 
