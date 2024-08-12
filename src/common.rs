@@ -258,6 +258,12 @@ impl From<&[u8]> for Address {
     }
 }
 
+impl From<[u8; 32]> for Address {
+    fn from(val: [u8; 32]) -> Self {
+        Address(val)
+    }
+}
+
 impl fmt::Display for Address {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut buf = [0u8; 32 + 6];
