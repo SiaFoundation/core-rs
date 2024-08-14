@@ -42,12 +42,18 @@ pub struct ToSign {
 /// - Add ArbitraryData
 /// - Add Signature
 
-impl TransactionBuilder {
-    /// Creates a new transaction builder
-    pub fn new() -> TransactionBuilder {
+impl Default for TransactionBuilder {
+    fn default() -> Self {
         TransactionBuilder {
             transaction: Default::default(),
         }
+    }
+}
+
+impl TransactionBuilder {
+    /// Creates a new transaction builder
+    pub fn new() -> TransactionBuilder {
+        Default::default()
     }
 
     pub fn add_change_address(self, _address: Address) -> Self {
@@ -65,7 +71,7 @@ impl TransactionBuilder {
     /// condition
     pub fn add_siacoin_input(mut self, parent_id: SiacoinOutputID, public_key: UnlockKey) -> Self {
         self.transaction.siacoin_inputs.push(SiacoinInput {
-            parent_id: parent_id,
+            parent_id,
             unlock_conditions: UnlockConditions {
                 public_keys: vec![public_key],
                 timelock: 0,
@@ -77,10 +83,9 @@ impl TransactionBuilder {
 
     /// Adds a siacoin output with the given value to the transaction
     pub fn add_siacoin_output(mut self, address: Address, value: Currency) -> Self {
-        self.transaction.siacoin_outputs.push(SiacoinOutput {
-            address: address,
-            value: value,
-        });
+        self.transaction
+            .siacoin_outputs
+            .push(SiacoinOutput { address, value });
         self
     }
 
