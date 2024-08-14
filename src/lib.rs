@@ -5,6 +5,7 @@ pub mod encoding;
 pub mod seed;
 pub mod signing;
 pub mod spendpolicy;
+pub mod transactionbuilder;
 pub mod transactions;
 pub mod unlock_conditions;
 
