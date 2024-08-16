@@ -4,7 +4,6 @@ pub mod currency;
 pub mod encoding;
 pub mod seed;
 pub mod signing;
-pub mod spendpolicy;
 pub mod transactions;
 pub mod unlock_conditions;
 
