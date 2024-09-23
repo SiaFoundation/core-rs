@@ -1,57 +1,15 @@
 use core::fmt;
 use std::time::SystemTime;
 
-use crate::{ChainIndex, Hash256, HexParseError};
+use crate::encoding::{to_writer, SerializeError};
+use crate::ImplHashID;
+use crate::{transactions::{CoveredFields, Transaction}, ChainIndex, Hash256, HexParseError};
 use base64::prelude::*;
+use blake2b_simd::Params;
 use ed25519_dalek::{Signature as ED25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{de::Error, Deserialize, Serialize};
 
-/// An ed25519 public key that can be used to verify a signature
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub struct PublicKey([u8; 32]);
-
-impl PublicKey {
-    const PREFIX: &'static str = "ed25519:";
-}
-
-impl Serialize for PublicKey {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            String::serialize(
-                &format!("{}{}", Self::PREFIX, &self.to_string()),
-                serializer,
-            )
-        } else {
-            <[u8; 32]>::serialize(&self.0, serializer)
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for PublicKey {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        if deserializer.is_human_readable() {
-            let s = String::deserialize(deserializer)?;
-            let s = s.strip_prefix(Self::PREFIX).ok_or(Error::custom(format!(
-                "key must have prefix '{}'",
-                Self::PREFIX
-            )))?;
-            let mut pk = [0; 32];
-            hex::decode_to_slice(s, &mut pk).map_err(|e| Error::custom(format!("{:?}", e)))?;
-            Ok(Self::new(pk))
-        } else {
-            Ok(PublicKey(<[u8; 32]>::deserialize(deserializer)?))
-        }
-    }
-}
-
-impl fmt::Display for PublicKey {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        hex::encode(self.0).fmt(f)
-    }
-}
+ImplHashID!(PublicKey, "ed25519");
 
 impl PublicKey {
     pub fn new(buf: [u8; 32]) -> Self {
@@ -62,12 +20,6 @@ impl PublicKey {
         let pk = VerifyingKey::from_bytes(&self.0).unwrap();
         pk.verify(msg, &ED25519Signature::from_bytes(signature.as_ref()))
             .is_ok()
-    }
-}
-
-impl AsRef<[u8]> for PublicKey {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
     }
 }
 
@@ -120,6 +72,14 @@ impl Drop for PrivateKey {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Signature([u8; 64]);
+
+impl TryFrom<&[u8]> for Signature {
+	type Error = core::array::TryFromSliceError;
+
+	fn try_from(buf: &[u8]) -> Result<Self, Self::Error> {
+		<[u8; 64]>::try_from(buf).map(Signature)
+	}
+}
 
 impl Serialize for Signature {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -198,7 +158,7 @@ impl fmt::Display for Signature {
         write!(f, "sig:{}", hex::encode(self.0))
     }
 }
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct NetworkHardforks {
     pub asic_height: u64,
 
@@ -208,6 +168,7 @@ pub struct NetworkHardforks {
     pub v2_require_height: u64,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct SigningState {
     pub index: ChainIndex,
     pub median_timestamp: SystemTime,
@@ -227,7 +188,7 @@ impl SigningState {
         }
     }
 
-    pub fn replay_prefix(&self) -> &[u8] {
+    fn replay_prefix(&self) -> &[u8] {
         if self.index.height >= self.hardforks.v2_allow_height {
             return &[2];
         } else if self.index.height >= self.hardforks.foundation_height {
@@ -237,6 +198,175 @@ impl SigningState {
         }
         &[]
     }
+
+	fn v1_partial_sig_hash(&self, txn: &Transaction, covered_fields: &CoveredFields) -> Result<Hash256, SerializeError>  {
+		let mut state = Params::new().hash_length(32).to_state();
+
+        for &i in covered_fields.siacoin_inputs.iter() {
+            if i >= txn.siacoin_inputs.len() {
+                return Err(SerializeError::Custom(
+                    "siacoin_inputs index out of bounds".to_string(),
+                ));
+            }
+            state.update(self.replay_prefix());
+            to_writer(&mut state, &txn.siacoin_inputs[i])?;
+        }
+
+        for &i in covered_fields.siacoin_outputs.iter() {
+            if i >= txn.siacoin_outputs.len() {
+                return Err(SerializeError::Custom(
+                    "siacoin_outputs index out of bounds".to_string(),
+                ));
+            }
+            to_writer(&mut state, &txn.siacoin_outputs[i])?;
+        }
+
+        for &i in covered_fields.file_contracts.iter() {
+            if i >= txn.file_contracts.len() {
+                return Err(SerializeError::Custom(
+                    "file_contracts index out of bounds".to_string(),
+                ));
+            }
+            to_writer(&mut state, &txn.file_contracts[i])?;
+        }
+
+        for &i in covered_fields.file_contract_revisions.iter() {
+            if i >= txn.file_contract_revisions.len() {
+                return Err(SerializeError::Custom(
+                    "file_contract_revisions index out of bounds".to_string(),
+                ));
+            }
+            to_writer(&mut state, &txn.file_contract_revisions[i])?;
+        }
+
+        for &i in covered_fields.storage_proofs.iter() {
+            if i >= txn.storage_proofs.len() {
+                return Err(SerializeError::Custom(
+                    "storage_proofs index out of bounds".to_string(),
+                ));
+            }
+            to_writer(&mut state, &txn.storage_proofs[i])?;
+        }
+
+        for &i in covered_fields.siafund_inputs.iter() {
+            if i >= txn.siafund_inputs.len() {
+                return Err(SerializeError::Custom(
+                    "siafund_inputs index out of bounds".to_string(),
+                ));
+            }
+            state.update(self.replay_prefix());
+            to_writer(&mut state, &txn.siafund_inputs[i])?;
+        }
+
+        for &i in covered_fields.siafund_outputs.iter() {
+            if i >= txn.siafund_outputs.len() {
+                return Err(SerializeError::Custom(
+                    "siafund_outputs index out of bounds".to_string(),
+                ));
+            }
+            to_writer(&mut state, &txn.siafund_outputs[i])?;
+        }
+
+        for &i in covered_fields.miner_fees.iter() {
+            if i >= txn.miner_fees.len() {
+                return Err(SerializeError::Custom(
+                    "miner_fees index out of bounds".to_string(),
+                ));
+            }
+            to_writer(&mut state, &txn.miner_fees[i])?;
+        }
+
+        for &i in covered_fields.arbitrary_data.iter() {
+            if i >= txn.arbitrary_data.len() {
+                return Err(SerializeError::Custom(
+                    "arbitrary_data index out of bounds".to_string(),
+                ));
+            }
+            state.update(&(txn.arbitrary_data[i].len() as u64).to_le_bytes());
+            state.update(&txn.arbitrary_data[i]);
+        }
+
+        for &i in covered_fields.signatures.iter() {
+            if i >= txn.signatures.len() {
+                return Err(SerializeError::Custom(
+                    "signatures index out of bounds".to_string(),
+                ));
+            }
+            to_writer(&mut state, &txn.signatures[i])?;
+        }
+
+        Ok(state.finalize().into())
+	}
+
+	fn v1_whole_sig_hash(&self, txn: &Transaction, parent_id: &Hash256, public_key_index: u64, timelock: u64) -> Result<Hash256, SerializeError> {
+		let mut state = Params::new().hash_length(32).to_state();
+
+        state.update(&(txn.siacoin_inputs.len() as u64).to_le_bytes());
+        for input in txn.siacoin_inputs.iter() {
+            state.update(self.replay_prefix());
+            to_writer(&mut state, input)?;
+        }
+
+        state.update(&(txn.siacoin_outputs.len() as u64).to_le_bytes());
+        for output in txn.siacoin_outputs.iter() {
+            to_writer(&mut state, output)?;
+        }
+
+        state.update(&(txn.file_contracts.len() as u64).to_le_bytes());
+        for file_contract in txn.file_contracts.iter() {
+            to_writer(&mut state, file_contract)?;
+        }
+
+        state.update(&(txn.file_contract_revisions.len() as u64).to_le_bytes());
+        for file_contract_revision in txn.file_contract_revisions.iter() {
+            to_writer(&mut state, file_contract_revision)?;
+        }
+
+        state.update(&(txn.storage_proofs.len() as u64).to_le_bytes());
+        for storage_proof in txn.storage_proofs.iter() {
+            to_writer(&mut state, storage_proof).unwrap();
+        }
+
+        state.update(&(txn.siafund_inputs.len() as u64).to_le_bytes());
+        for input in txn.siafund_inputs.iter() {
+            state.update(self.replay_prefix());
+            to_writer(&mut state, input).unwrap();
+        }
+
+        state.update(&(txn.siafund_outputs.len() as u64).to_le_bytes());
+        for output in txn.siafund_outputs.iter() {
+            to_writer(&mut state, output)?;
+        }
+
+        state.update(&(txn.miner_fees.len() as u64).to_le_bytes());
+        for fee in txn.miner_fees.iter() {
+            to_writer(&mut state, &fee)?;
+        }
+
+        state.update(&(txn.arbitrary_data.len() as u64).to_le_bytes());
+        for data in txn.arbitrary_data.iter() {
+            state.update(&(data.len() as u64).to_le_bytes());
+            state.update(data);
+        }
+
+        to_writer(&mut state, parent_id)?;
+        state.update(&public_key_index.to_le_bytes());
+        state.update(&timelock.to_le_bytes());
+
+        Ok(state.finalize().into())
+	}
+
+	pub fn v1_transaction_sig_hash(&self, txn: &Transaction, sig_index: usize) -> Result<Hash256, SerializeError> {
+		if txn.signatures.len() <= sig_index {
+			return Err(SerializeError::Custom("signature index out of bounds".to_string()));
+		}
+
+		let sig = &txn.signatures[sig_index];
+		if sig.covered_fields.whole_transaction {
+			return self.v1_whole_sig_hash(txn, &sig.parent_id, sig.public_key_index, sig.timelock);
+		}
+		self.v1_partial_sig_hash(txn, &sig.covered_fields)
+	}
 }
 
 #[cfg(test)]
@@ -247,7 +377,7 @@ mod tests {
         encoding::{from_reader, to_bytes},
         transactions::{
             CoveredFields, FileContract, FileContractID, FileContractRevision, SiacoinInput,
-            SiacoinOutput, SiafundInput, SiafundOutput, StorageProof, Transaction,
+            SiacoinOutput, SiafundInput, SiafundOutput, SiacoinOutputID, StorageProof, Transaction,
             TransactionSignature,
         },
         unlock_conditions::UnlockConditions,
@@ -279,9 +409,72 @@ mod tests {
         assert_eq!(public_key_deserialized, public_key);
     }
 
+	#[test]
+    fn test_v1_whole_sig_hash() {
+        let state = SigningState {
+            index: ChainIndex {
+                height: 0,
+                id: [0; 32],
+            },
+            median_timestamp: SystemTime::now(),
+            hardforks: NetworkHardforks {
+                asic_height: 0,
+                foundation_height: 0,
+                v2_allow_height: 1000,
+                v2_require_height: 1000,
+            },
+        };
+        let pk = PrivateKey::from_seed(&[
+            136, 215, 58, 248, 45, 30, 78, 97, 128, 111, 82, 204, 43, 233, 223, 111, 110, 29, 73,
+            157, 52, 25, 242, 96, 131, 16, 187, 22, 232, 107, 17, 205,
+        ]);
+        let test_cases = vec![
+			(
+				Transaction {
+					siacoin_inputs: vec![
+						SiacoinInput{
+							parent_id: SiacoinOutputID::from([32,11,215,36,166,174,135,0,92,215,179,18,74,229,52,154,221,194,213,216,219,47,225,205,251,84,248,2,69,252,37,117]),
+							unlock_conditions: UnlockConditions::standard_unlock_conditions(pk.public_key()),
+						}
+					],
+					siacoin_outputs: vec![
+						SiacoinOutput{
+							value: Currency::new(67856467336433871),
+							address: Address::parse_string("addr:000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69").unwrap(),
+						}
+					],
+					file_contracts: Vec::new(),
+					file_contract_revisions: Vec::new(),
+					storage_proofs: Vec::new(),
+					siafund_inputs: Vec::new(),
+					siafund_outputs: Vec::new(),
+					miner_fees: Vec::new(),
+					arbitrary_data: Vec::new(),
+					signatures: vec![
+						TransactionSignature{
+							parent_id: Hash256::from([32,11,215,36,166,174,135,0,92,215,179,18,74,229,52,154,221,194,213,216,219,47,225,205,251,84,248,2,69,252,37,117]),
+							public_key_index: 0,
+							timelock: 0,
+							covered_fields: CoveredFields::whole_transaction(),
+							signature: Signature::default(),
+						}
+					],
+				},
+				"h:a4b1855c546db7ec902237f730717faae96187db8ce9fe139504323a639f731e"
+			)
+		];
+
+        for (txn, expected) in test_cases {
+			let sig_hash = state.v1_transaction_sig_hash(&txn, 0)
+                .expect("expect tranasction to hash");
+
+            assert_eq!(sig_hash.to_string(), expected)
+        }
+    }
+
     #[test]
-    fn test_transaction_sign_verify() {
-        let unsigned_transaction = Transaction {
+    fn test_v1_transaction_sign_verify() {
+        let mut unsigned_transaction = Transaction {
             siacoin_inputs: vec![SiacoinInput {
                 parent_id: Default::default(),
                 unlock_conditions: UnlockConditions {
@@ -481,7 +674,7 @@ mod tests {
             },
         ];
 
-        for tc in test_cases {
+        for (i, tc) in test_cases.iter().enumerate() {
             // update state
             state.index.height = tc.height;
 
@@ -508,24 +701,10 @@ mod tests {
             };
 
             // sign and check signature
-            let signature = unsigned_transaction
-                .sign(&state, &covered_fields, Hash256::default(), 1, 100, &key)
-                .unwrap();
-            assert_eq!(signature.signature, tc.signature);
-
-            // manually build the sig_hash and check the signature
-            let sig_hash = if tc.whole_transaction {
-                unsigned_transaction
-                    .whole_sig_hash(&state, &Hash256::default(), 1, 100, &Vec::new())
-                    .unwrap()
-            } else {
-                unsigned_transaction
-                    .partial_sig_hash(&state, &covered_fields)
-                    .unwrap()
-            };
-            assert!(key
-                .public_key()
-                .verify(&sig_hash.as_ref(), &signature.signature));
+			unsigned_transaction.signatures[0].covered_fields = covered_fields;
+			let sig_hash = state.v1_transaction_sig_hash(&unsigned_transaction, 0).unwrap();
+            let signature = key.sign(sig_hash.as_ref());
+            assert_eq!(signature, tc.signature, "test case {}", i);
         }
     }
 }

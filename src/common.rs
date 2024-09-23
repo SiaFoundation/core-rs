@@ -3,6 +3,7 @@ use core::fmt;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
+#[derive(Serialize, Deserialize, PartialEq)]
 pub struct ChainIndex {
     pub height: u64,
     pub id: [u8; 32],

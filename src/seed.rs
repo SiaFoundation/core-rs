@@ -160,7 +160,7 @@ mod tests {
         let seed = Seed::from_mnemonic(PHRASE).unwrap();
         for (i, expected) in test_addresses {
             let pk = seed.private_key(i).public_key();
-            assert_eq!(pk.as_ref(), expected[32..].as_ref(), "index {}", i);
+            assert_eq!(pk.to_string(), format!("ed25519:{}", hex::encode(expected[32..].as_ref())), "index {}", i);
         }
     }
 }
