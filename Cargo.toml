@@ -5,9 +5,9 @@ edition = "2021"
 repository = "https://github.com/SiaFoundation/core-rs"
 license = "MIT"
 description = "Low-level SDK for interacting with the Sia decentralized storage network"
-authors = [ "The Sia Foundation" ]
-categories = [ "cryptography::cryptocurrencies" ]
-keywords = [ "sia", "decentralized", "blockchain", "depin", "storage" ]
+authors = ["The Sia Foundation"]
+categories = ["cryptography::cryptocurrencies"]
+keywords = ["sia", "decentralized", "blockchain", "depin", "storage"]
 
 [lib]
 name = "sia_core"
@@ -27,3 +27,8 @@ thiserror = "1.0.63"
 
 [dev-dependencies]
 rand = "0.8.5"
+criterion = { version = "0.5" }
+
+[[bench]]
+name = "merkle_root"
+harness = false
