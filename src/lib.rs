@@ -2,6 +2,7 @@ mod common;
 
 pub mod currency;
 pub mod encoding;
+pub mod rhp;
 pub mod seed;
 pub mod signing;
 pub mod spendpolicy;

@@ -525,7 +525,7 @@ mod tests {
             };
             assert!(key
                 .public_key()
-                .verify(&sig_hash.as_ref(), &signature.signature));
+                .verify(sig_hash.as_ref(), &signature.signature));
         }
     }
 }
