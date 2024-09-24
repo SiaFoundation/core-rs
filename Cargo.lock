@@ -701,6 +701,7 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "rand",
+ "rayon",
  "serde",
  "serde-big-array",
  "serde_json",

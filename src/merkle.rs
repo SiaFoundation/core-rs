@@ -53,7 +53,17 @@ impl Accumulator {
     }
 }
 
-fn sum_node(params: &Params, left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
+pub fn sum_leaf(params: &Params, leaf: &[u8]) -> [u8; 32] {
+    let h = params
+        .to_state()
+        .update(LEAF_HASH_PREFIX)
+        .update(leaf)
+        .finalize();
+
+    h.as_bytes().try_into().unwrap()
+}
+
+pub fn sum_node(params: &Params, left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
     let h = params
         .to_state()
         .update(NODE_HASH_PREFIX)
