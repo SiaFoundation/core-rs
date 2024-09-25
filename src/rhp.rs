@@ -18,14 +18,14 @@ pub fn sector_root(sector: &[u8]) -> Hash256 {
         .collect::<Vec<_>>();
 
     let mut step_size = 1;
+    let mut chunk_size = 2;
     while step_size < tree_hashes.len() {
         tree_hashes
-            .par_iter_mut()
-            .step_by(step_size)
-            .chunks(2)
-            .for_each(|mut nodes| {
-                *nodes[0] = sum_node(&params, nodes[0], nodes[1]);
+            .par_chunks_exact_mut(chunk_size)
+            .for_each(|nodes| {
+                nodes[0] = sum_node(&params, &nodes[0], &nodes[step_size]);
             });
+        chunk_size *= 2;
         step_size *= 2;
     }
     Hash256::from(tree_hashes[0])
