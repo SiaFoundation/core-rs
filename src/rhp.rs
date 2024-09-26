@@ -1,7 +1,7 @@
 use crate::merkle::{sum_leaf, sum_node};
 use crate::Hash256;
 use blake2b_simd::Params;
-use rayon::prelude::*;
+//use rayon::prelude::*;
 
 pub const SEGMENT_SIZE: usize = 64;
 pub const SECTOR_SIZE: usize = 1 << 22;
@@ -13,19 +13,20 @@ pub fn sector_root(sector: &[u8]) -> Hash256 {
     params.hash_length(32);
 
     let mut tree_hashes = sector
-        .par_chunks_exact(SEGMENT_SIZE)
+        .chunks_exact(SEGMENT_SIZE)
         .map(|chunk| sum_leaf(&params, chunk))
         .collect::<Vec<_>>();
 
     let mut step_size = 1;
     while step_size < tree_hashes.len() {
-        tree_hashes
-            .par_iter_mut()
-            .step_by(step_size)
-            .chunks(2)
-            .for_each(|mut nodes| {
-                *nodes[0] = sum_node(&params, nodes[0], nodes[1]);
-            });
+        // Iterate over tree_hashes in steps of step_size * 2
+        for i in (0..tree_hashes.len()).step_by(step_size * 2) {
+            let j = i + step_size;
+            if j < tree_hashes.len() {
+                // Compute the parent node hash from two child hashes
+                tree_hashes[i] = sum_node(&params, &tree_hashes[i], &tree_hashes[j]);
+            }
+        }
         step_size *= 2;
     }
     Hash256::from(tree_hashes[0])
