@@ -53,6 +53,7 @@ impl Accumulator {
     }
 }
 
+#[allow(dead_code)]
 pub fn sum_leaf(params: &Params, leaf: &[u8]) -> [u8; 32] {
     let h = params
         .to_state()
