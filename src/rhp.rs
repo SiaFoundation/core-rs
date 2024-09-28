@@ -30,11 +30,13 @@ pub fn sector_root(sector: &[u8]) -> Hash256 {
             let mut jobs = [
                 HashManyJob::new(&params, &inputs[0][..]),
                 HashManyJob::new(&params, &inputs[1][..]),
+                HashManyJob::new(&params, &inputs[2][..]),
+                HashManyJob::new(&params, &inputs[3][..]),
             ];
             hash_many(&mut jobs);
 
             // collect results
-            for j in 0..2 {
+            for j in 0..4 {
                 chunk[j] = jobs[j].to_hash().as_bytes().try_into().unwrap();
             }
         });
