@@ -4,13 +4,13 @@ use crate::signing::{PublicKey, Signature};
 use crate::unlock_conditions::UnlockConditions;
 use crate::{Address, Hash256};
 use blake2b_simd::Params;
-use chrono::{DateTime, TimeZone, Utc};
 use core::fmt;
 use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde::ser::{SerializeStruct, SerializeTuple};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
+use time::OffsetDateTime;
 
 const POLICY_ABOVE_PREFIX: u8 = 1;
 const POLICY_AFTER_PREFIX: u8 = 2;
@@ -59,7 +59,7 @@ pub enum SpendPolicy {
     /// A policy that is only valid after a block height
     Above(u64),
     /// A policy that is only valid after a timestamp
-    After(DateTime<Utc>),
+    After(OffsetDateTime),
     /// A policy that requires a valid signature from an ed25519 key pair
     PublicKey(PublicKey),
     /// A policy that requires a valid SHA256 hash preimage
@@ -107,7 +107,7 @@ impl SpendPolicy {
     }
 
     /// Create a policy that is only valid after a certain timestamp
-    pub fn after(timestamp: DateTime<Utc>) -> Self {
+    pub fn after(timestamp: OffsetDateTime) -> Self {
         Self::After(timestamp)
     }
 
@@ -188,12 +188,12 @@ impl<'de> Deserialize<'de> for SpendPolicy {
                     Ok(SpendPolicy::Above(height))
                 }
                 POLICY_AFTER_PREFIX => {
-                    let timestamp: u64 = seq
+                    let unix_seconds: u64 = seq
                         .next_element()?
                         .ok_or_else(|| de::Error::custom("missing timestamp"))?;
-                    Ok(SpendPolicy::After(
-                        Utc.timestamp_opt(timestamp as i64, 0).unwrap(),
-                    ))
+                    let timestamp = OffsetDateTime::from_unix_timestamp(unix_seconds as i64)
+                        .map_err(|_| de::Error::custom("invalid timestamp"))?;
+                    Ok(SpendPolicy::After(timestamp))
                 }
                 POLICY_PUBLIC_KEY_PREFIX => {
                     let key: [u8; 32] = seq
@@ -293,11 +293,11 @@ impl<'de> Deserialize<'de> for SpendPolicy {
                         Ok(SpendPolicy::Above(height))
                     }
                     POLICY_AFTER_STR => {
-                        let timestamp: u64 =
+                        let unix_seconds: u64 =
                             serde_json::from_value(policy_value).map_err(de::Error::custom)?;
-                        Ok(SpendPolicy::After(
-                            Utc.timestamp_opt(timestamp as i64, 0).unwrap(),
-                        ))
+                        let timestamp = OffsetDateTime::from_unix_timestamp(unix_seconds as i64)
+                            .map_err(|_| de::Error::custom("invalid timestamp"))?;
+                        Ok(SpendPolicy::After(timestamp))
                     }
                     POLICY_PUBLIC_KEY_STR => {
                         let pk: PublicKey =
@@ -368,8 +368,8 @@ impl Serialize for SpendPolicy {
             match policy {
                 SpendPolicy::Above(height) => s.serialize_element(height),
                 SpendPolicy::After(time) => {
-                    let ts = time.timestamp() as u64;
-                    s.serialize_element(&ts)
+                    let unix_seconds = time.unix_timestamp() as u64;
+                    s.serialize_element(&unix_seconds)
                 }
                 SpendPolicy::PublicKey(pk) => {
                     let mut arr: [u8; 32] = [0; 32];
@@ -405,8 +405,8 @@ impl Serialize for SpendPolicy {
                 state.serialize_field("policy", height)?;
             }
             SpendPolicy::After(time) => {
-                let ts = time.timestamp() as u64;
-                state.serialize_field("policy", &ts)?;
+                let unix_seconds = time.unix_timestamp() as u64;
+                state.serialize_field("policy", &unix_seconds)?;
             }
             SpendPolicy::PublicKey(pk) => {
                 state.serialize_field("policy", &pk)?;
@@ -440,7 +440,7 @@ impl fmt::Display for SpendPolicy {
         match self {
             SpendPolicy::Above(height) => write!(f, "above({})", height),
             SpendPolicy::After(time) => {
-                write!(f, "after({})", time.timestamp() as u64)
+                write!(f, "after({})", time.unix_timestamp())
             }
             SpendPolicy::PublicKey(pk) => write!(f, "pk(0x{})", hex::encode(pk.as_ref())),
             SpendPolicy::Hash(hash) => write!(f, "h(0x{})", hex::encode(hash)),
@@ -491,7 +491,6 @@ impl SatisfiedPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
 
     #[test]
     fn test_address() {
@@ -508,7 +507,7 @@ mod tests {
                 "c2fba9b9607c800e80d9284ed0fb9a55737ba1bbd67311d0d9242dd6376bed0c6ee355e814fa",
             ),
             (
-                SpendPolicy::After(Utc.timestamp_opt(1433600000, 0).unwrap()),
+                SpendPolicy::After(OffsetDateTime::from_unix_timestamp(1433600000).unwrap()),
                 "5bdb96e33ffdf72619ad38bee57ad4db9eb242aeb2ee32020ba16179af5d46d501bd2011806b",
             ),
             (
@@ -531,7 +530,9 @@ mod tests {
                             2,
                             vec![
                                 SpendPolicy::PublicKey(PublicKey::new([0; 32])),
-                                SpendPolicy::After(Utc.timestamp_opt(1433600000, 0).unwrap()),
+                                SpendPolicy::After(
+                                    OffsetDateTime::from_unix_timestamp(1433600000).unwrap(),
+                                ),
                             ],
                         ),
                     ],
@@ -549,7 +550,7 @@ mod tests {
     fn test_opaque_policy() {
         let test_cases = vec![
             SpendPolicy::above(100),
-            SpendPolicy::after(Utc.timestamp_opt(100, 0).unwrap()),
+            SpendPolicy::after(OffsetDateTime::from_unix_timestamp(100).unwrap()),
             SpendPolicy::public_key(PublicKey::new([0; 32])),
             SpendPolicy::hash(Hash256::from([0; 32])),
             SpendPolicy::threshold(
@@ -568,7 +569,7 @@ mod tests {
                         2,
                         vec![
                             SpendPolicy::public_key(PublicKey::new([0; 32])),
-                            SpendPolicy::after(Utc.timestamp_opt(100, 0).unwrap()),
+                            SpendPolicy::after(OffsetDateTime::from_unix_timestamp(100).unwrap()),
                         ],
                     ),
                     SpendPolicy::PublicKey(PublicKey::new([1; 32])),
@@ -612,7 +613,7 @@ mod tests {
     fn test_policy_json() {
         let test_cases = vec![
             (SpendPolicy::above(100), "{\"type\":\"above\",\"policy\":100}"),
-            ( SpendPolicy::after(Utc.timestamp_opt(100, 0).unwrap()), "{\"type\":\"after\",\"policy\":100}"),
+            ( SpendPolicy::after(OffsetDateTime::from_unix_timestamp(100).unwrap()), "{\"type\":\"after\",\"policy\":100}"),
             ( SpendPolicy::public_key(PublicKey::new([1; 32])), "{\"type\":\"pk\",\"policy\":\"ed25519:0101010101010101010101010101010101010101010101010101010101010101\"}"),
             ( SpendPolicy::hash(Hash256::from([0; 32])), "{\"type\":\"h\",\"policy\":\"0000000000000000000000000000000000000000000000000000000000000000\"}"),
             (
@@ -635,7 +636,7 @@ mod tests {
 							2,
 							vec![
 								SpendPolicy::public_key(PublicKey::new([0; 32])),
-								SpendPolicy::after(Utc.timestamp_opt(100, 0).unwrap()),
+								SpendPolicy::after(OffsetDateTime::from_unix_timestamp(100).unwrap()),
 							],
 						),
 						SpendPolicy::PublicKey(PublicKey::new([0; 32])),
