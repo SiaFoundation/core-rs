@@ -4,10 +4,11 @@ use crate::signing::{PublicKey, Signature};
 use crate::unlock_conditions::UnlockConditions;
 use crate::{Address, Hash256};
 use blake2b_simd::Params;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use core::fmt;
+use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde::ser::{SerializeStruct, SerializeTuple};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
 
@@ -146,45 +147,225 @@ impl SpendPolicy {
         }
         Address::from(state.finalize().as_bytes())
     }
+}
 
-    /// Encode the policy to a writer. This is used to handle recursive
-    /// threshold policies. The version byte is only written for the top-level
-    /// policy.
-    fn serialize_policy<S: serde::ser::SerializeTuple>(&self, s: &mut S) -> Result<(), S::Error> {
-        s.serialize_element(&self.type_prefix())?; // type prefix
-        match self {
-            SpendPolicy::Above(height) => s.serialize_element(height),
-            SpendPolicy::After(time) => {
-                let ts = time.timestamp() as u64;
-                s.serialize_element(&ts)
-            }
-            SpendPolicy::PublicKey(pk) => {
-                let mut arr: [u8; 32] = [0; 32];
-                arr.copy_from_slice(pk.as_ref());
-                s.serialize_element(&arr)
-            }
-            SpendPolicy::Hash(hash) => s.serialize_element(hash),
-            SpendPolicy::Threshold(n, policies) => {
-                let prefix = [*n, policies.len() as u8];
-                s.serialize_element(&prefix)?;
-                for policy in policies {
-                    policy.serialize_policy(s)?;
+impl<'de> Deserialize<'de> for SpendPolicy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+		// helper to recursively deserialize a policy in binary format
+        fn deserialize_policy<'de, V>(seq: &mut V) -> Result<SpendPolicy, V::Error>
+        where
+            V: SeqAccess<'de>,
+        {
+            let type_prefix: u8 = seq
+                .next_element()?
+                .ok_or_else(|| de::Error::custom("missing type prefix"))?;
+            match type_prefix {
+                1 => {
+                    let height = seq
+                        .next_element()?
+                        .ok_or_else(|| de::Error::custom("missing height"))?;
+                    Ok(SpendPolicy::Above(height))
                 }
-                Ok(())
+                2 => {
+                    let timestamp: u64 = seq
+                        .next_element()?
+                        .ok_or_else(|| de::Error::custom("missing timestamp"))?;
+                    Ok(SpendPolicy::After(
+                        Utc.timestamp_opt(timestamp as i64, 0).unwrap(),
+                    ))
+                }
+                3 => {
+                    let key: [u8; 32] = seq
+                        .next_element()?
+                        .ok_or_else(|| de::Error::custom("missing key"))?;
+                    Ok(SpendPolicy::PublicKey(PublicKey::new(key)))
+                }
+                4 => {
+                    let hash = seq
+                        .next_element()?
+                        .ok_or_else(|| de::Error::custom("missing hash"))?;
+                    Ok(SpendPolicy::Hash(hash))
+                }
+                5 => {
+                    let prefix: [u8; 2] = seq
+                        .next_element()?
+                        .ok_or_else(|| de::Error::custom("missing threshold prefix"))?;
+                    let n = prefix[0];
+                    let len = prefix[1] as usize;
+                    let mut policies = Vec::with_capacity(len);
+                    for _ in 0..len {
+                        policies.push(deserialize_policy(seq)?);
+                    }
+                    Ok(SpendPolicy::Threshold(n, policies))
+                }
+                6 => {
+                    let addr = seq
+                        .next_element()?
+                        .ok_or_else(|| de::Error::custom("missing address"))?;
+                    Ok(SpendPolicy::Opaque(addr))
+                }
+                7 => {
+                    #[allow(deprecated)]
+                    let uc = seq
+                        .next_element()?
+                        .ok_or_else(|| de::Error::custom("missing unlock conditions"))?;
+                    #[allow(deprecated)]
+                    Ok(SpendPolicy::UnlockConditions(uc))
+                }
+                _ => Err(de::Error::custom("invalid policy type")),
             }
-            SpendPolicy::Opaque(addr) => s.serialize_element(addr),
-            #[allow(deprecated)]
-            SpendPolicy::UnlockConditions(uc) => s.serialize_element(uc),
+        }
+
+        struct SpendPolicyVisitor;
+
+        impl<'de> Visitor<'de> for SpendPolicyVisitor {
+            type Value = SpendPolicy;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a spend policy")
+            }
+
+            // sia encoding
+            fn visit_seq<V>(self, mut seq: V) -> Result<Self::Value, V::Error>
+            where
+                V: SeqAccess<'de>,
+            {
+                let version: u8 = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                if version != 1 {
+                    return Err(de::Error::custom("invalid version"));
+                }
+
+                deserialize_policy(&mut seq)
+            }
+
+            // json encoding
+            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut policy_type: Option<String> = None;
+                let mut policy_value: Option<serde_json::Value> = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "type" => {
+                            policy_type = Some(map.next_value()?);
+                        }
+                        "policy" => {
+                            policy_value = Some(map.next_value()?);
+                        }
+                        _ => return Err(de::Error::unknown_field(&key, &["type", "policy"])),
+                    }
+                }
+
+                let policy_type = policy_type.ok_or_else(|| de::Error::missing_field("type"))?;
+                let policy_value =
+                    policy_value.ok_or_else(|| de::Error::missing_field("policy"))?;
+
+                match policy_type.as_str() {
+                    "above" => {
+                        let height =
+                            serde_json::from_value(policy_value).map_err(de::Error::custom)?;
+                        Ok(SpendPolicy::Above(height))
+                    }
+                    "after" => {
+                        let timestamp: u64 =
+                            serde_json::from_value(policy_value).map_err(de::Error::custom)?;
+                        Ok(SpendPolicy::After(
+                            Utc.timestamp_opt(timestamp as i64, 0).unwrap(),
+                        ))
+                    }
+                    "pk" => {
+                        let pk: PublicKey =
+                            serde_json::from_value(policy_value).map_err(de::Error::custom)?;
+                        Ok(SpendPolicy::PublicKey(pk))
+                    }
+                    "h" => {
+                        let hash: Hash256 =
+                            serde_json::from_value(policy_value).map_err(de::Error::custom)?;
+                        Ok(SpendPolicy::Hash(hash))
+                    }
+                    "thresh" => {
+                        #[derive(Deserialize)]
+                        struct ThreshPolicy {
+                            n: u8,
+                            of: Vec<SpendPolicy>,
+                        }
+                        let thresh: ThreshPolicy =
+                            serde_json::from_value(policy_value).map_err(de::Error::custom)?;
+                        Ok(SpendPolicy::Threshold(thresh.n, thresh.of))
+                    }
+                    "opaque" => {
+                        let addr: Address =
+                            serde_json::from_value(policy_value).map_err(de::Error::custom)?;
+                        Ok(SpendPolicy::Opaque(addr))
+                    }
+                    "uc" => {
+                        #[allow(deprecated)]
+                        let uc: UnlockConditions =
+                            serde_json::from_value(policy_value).map_err(de::Error::custom)?;
+                        #[allow(deprecated)]
+                        Ok(SpendPolicy::UnlockConditions(uc))
+                    }
+                    _ => Err(de::Error::unknown_variant(
+                        &policy_type,
+                        &["above", "after", "pk", "h", "thresh", "opaque", "uc"],
+                    )),
+                }
+            }
+        }
+
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_map(SpendPolicyVisitor)
+        } else {
+            deserializer.deserialize_seq(SpendPolicyVisitor)
         }
     }
 }
 
 impl Serialize for SpendPolicy {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // helper to recursively serialize a policy in binary format
+        fn serialize_policy<S>(policy: &SpendPolicy, s: &mut S) -> Result<(), S::Error>
+        where
+            S: SerializeTuple,
+        {
+            s.serialize_element(&policy.type_prefix())?; // type prefix
+            match policy {
+                SpendPolicy::Above(height) => s.serialize_element(height),
+                SpendPolicy::After(time) => {
+                    let ts = time.timestamp() as u64;
+                    s.serialize_element(&ts)
+                }
+                SpendPolicy::PublicKey(pk) => {
+                    let mut arr: [u8; 32] = [0; 32];
+                    arr.copy_from_slice(pk.as_ref());
+                    s.serialize_element(&arr)
+                }
+                SpendPolicy::Hash(hash) => s.serialize_element(hash),
+                SpendPolicy::Threshold(n, policies) => {
+                    let prefix = [*n, policies.len() as u8];
+                    s.serialize_element(&prefix)?;
+                    for policy in policies {
+                        serialize_policy(policy, s)?;
+                    }
+                    Ok(())
+                }
+                SpendPolicy::Opaque(addr) => s.serialize_element(addr),
+                #[allow(deprecated)]
+                SpendPolicy::UnlockConditions(uc) => s.serialize_element(uc),
+            }
+        }
+
         if !serializer.is_human_readable() {
             let mut s = serializer.serialize_tuple(0)?;
             s.serialize_element(&1u8)?; // version
-            self.serialize_policy(&mut s)?;
+            serialize_policy(self, &mut s)?;
             return s.end();
         }
 
@@ -450,6 +631,9 @@ mod tests {
         for (policy, expected) in test_cases {
             let json = serde_json::to_string(&policy).unwrap();
             assert_eq!(json, expected);
+
+            let parsed: SpendPolicy = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, policy);
         }
     }
 }
