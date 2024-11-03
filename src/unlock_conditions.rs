@@ -14,10 +14,10 @@ use serde::{Deserialize, Serialize};
 ///  contract
 ///
 /// Currently only supports ed25519 keys
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct UnlockKey {
-    algorithm: Algorithm,
-    public_key: PublicKey,
+    pub algorithm: Algorithm,
+    pub key: Vec<u8>,
 }
 
 impl Serialize for UnlockKey {
@@ -25,7 +25,7 @@ impl Serialize for UnlockKey {
         if serializer.is_human_readable() {
             String::serialize(&self.to_string(), serializer)
         } else {
-            <(Algorithm, &[u8])>::serialize(&(self.algorithm, self.public_key.as_ref()), serializer)
+            <(Algorithm, &[u8])>::serialize(&(self.algorithm, self.key.as_ref()), serializer)
         }
     }
 }
@@ -39,14 +39,10 @@ impl<'de> Deserialize<'de> for UnlockKey {
             let s = String::deserialize(deserializer)?;
             UnlockKey::parse_string(&s).map_err(|e| Error::custom(format!("{:?}", e)))
         } else {
-            let (algorithm, raw_key) = <(Algorithm, Vec<u8>)>::deserialize(deserializer)?;
+            let (algorithm, key) = <(Algorithm, Vec<u8>)>::deserialize(deserializer)?;
             Ok(Self {
                 algorithm,
-                public_key: PublicKey::new(
-                    raw_key
-                        .try_into()
-                        .map_err(|e| Error::custom(format!("Invalid key: {:?}", e)))?,
-                ),
+				key,
             })
         }
     }
@@ -54,7 +50,7 @@ impl<'de> Deserialize<'de> for UnlockKey {
 
 impl fmt::Display for UnlockKey {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}:{}", self.algorithm, self.public_key)
+        write!(f, "{}:{}", self.algorithm, hex::encode(self.key.as_slice()))
     }
 }
 
@@ -118,14 +114,6 @@ impl<'de> Deserialize<'de> for Algorithm {
 }
 
 impl UnlockKey {
-    /// Creates a new UnlockKey
-    pub fn new(algorithm: Algorithm, public_key: PublicKey) -> UnlockKey {
-        UnlockKey {
-            algorithm,
-            public_key,
-        }
-    }
-
     /// Parses an UnlockKey from a string
     /// The string should be in the format "algorithm:public_key"
     pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
@@ -139,19 +127,17 @@ impl UnlockKey {
         hex::decode_to_slice(key_str, &mut data).map_err(HexParseError::HexError)?;
         Ok(UnlockKey {
             algorithm,
-            public_key: PublicKey::new(data),
+            key: data.to_vec(),
         })
-    }
-
-    // Returns the public key of the UnlockKey
-    pub fn public_key(&self) -> PublicKey {
-        self.public_key
     }
 }
 
 impl From<PublicKey> for UnlockKey {
     fn from(val: PublicKey) -> Self {
-        UnlockKey::new(Algorithm::ed25519(), val)
+        UnlockKey{
+			algorithm: Algorithm::ed25519(), 
+			key: val.as_ref().to_vec(),
+		}
     }
 }
 
@@ -180,7 +166,7 @@ impl UnlockConditions {
     pub fn standard_unlock_conditions(public_key: PublicKey) -> UnlockConditions {
         UnlockConditions {
             timelock: 0,
-            public_keys: vec![UnlockKey::new(Algorithm::ed25519(), public_key)],
+            public_keys: vec![public_key.into()],
             signatures_required: 1,
         }
     }
@@ -251,14 +237,11 @@ mod tests {
 
     #[test]
     fn test_serialize_unlock_key() {
-        let unlock_key = UnlockKey::new(
-            Algorithm::ed25519(),
-            PublicKey::new([
-                0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda,
-                0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb,
-                0x1d, 0x1c, 0xe1, 0xb6,
-            ]),
-        );
+		let unlock_key : UnlockKey = PublicKey::new([
+			0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47, 0xda,
+			0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a, 0xd0, 0xdb,
+			0x1d, 0x1c, 0xe1, 0xb6,
+		]).into();
 
         // binary
         let unlock_key_serialized = to_bytes(&unlock_key).unwrap();
@@ -290,14 +273,11 @@ mod tests {
     fn test_serialize_unlock_conditions() {
         let unlock_conditions = UnlockConditions::new(
             123,
-            vec![UnlockKey::new(
-                Algorithm::ed25519(),
-                PublicKey::new([
-                    0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47,
-                    0xda, 0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a,
-                    0xd0, 0xdb, 0x1d, 0x1c, 0xe1, 0xb6,
-                ]),
-            )],
+            vec![PublicKey::new([
+				0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b, 0x47,
+				0xda, 0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28, 0x8c, 0x1a,
+				0xd0, 0xdb, 0x1d, 0x1c, 0xe1, 0xb6,
+			]).into()],
             1,
         );
 

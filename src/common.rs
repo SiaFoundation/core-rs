@@ -72,7 +72,7 @@ impl<'de> Deserialize<'de> for Leaf {
 // serialized with a prefix
 #[macro_export]
 macro_rules! ImplHashID {
-    ($name:ident, $prefix:expr) => {
+    ($name:ident) => {
         #[derive(Debug, Clone, Copy, PartialEq)]
         pub struct $name([u8; 32]);
 
@@ -122,7 +122,7 @@ macro_rules! ImplHashID {
 
         impl fmt::Display for $name {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "{}:{}", $prefix, hex::encode(self.0))
+                write!(f, "{}", hex::encode(self.0))
             }
         }
 
@@ -166,7 +166,7 @@ macro_rules! ImplHashID {
     };
 }
 
-ImplHashID!(Hash256, "h");
+ImplHashID!(Hash256);
 
 /// encapsulates the various errors that can occur when parsing a Sia object
 /// from a string

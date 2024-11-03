@@ -8,9 +8,9 @@ use blake2b_simd::{Params, State};
 use core::fmt;
 use serde::{Deserialize, Serialize};
 
-ImplHashID!(SiacoinOutputID, "scoid");
+ImplHashID!(SiacoinOutputID);
 
-ImplHashID!(SiafundOutputID, "sfoid");
+ImplHashID!(SiafundOutputID);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -44,7 +44,7 @@ pub struct SiafundOutput {
     pub claim_start: Currency,
 }
 
-ImplHashID!(FileContractID, "fcid");
+ImplHashID!(FileContractID);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -123,7 +123,7 @@ pub struct TransactionSignature {
     pub signature: Signature,
 }
 
-ImplHashID!(TransactionID, "txn");
+ImplHashID!(TransactionID);
 
 #[derive(Default, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -484,7 +484,6 @@ impl Transaction {
 mod tests {
     use crate::encoding::{from_reader, to_bytes};
     use crate::signing::{NetworkHardforks, PublicKey};
-    use crate::unlock_conditions::{Algorithm, UnlockKey};
     use crate::ChainIndex;
     use std::time::SystemTime;
     use std::vec;
@@ -538,14 +537,11 @@ mod tests {
             .unwrap(),
             unlock_conditions: UnlockConditions::new(
                 123,
-                vec![UnlockKey::new(
-                    Algorithm::ed25519(),
-                    PublicKey::new([
-                        0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b,
-                        0x47, 0xda, 0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28,
-                        0x8c, 0x1a, 0xd0, 0xdb, 0x1d, 0x1c, 0xe1, 0xb6,
-                    ]),
-                )],
+                vec![PublicKey::new([
+					0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b,
+					0x47, 0xda, 0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28,
+					0x8c, 0x1a, 0xd0, 0xdb, 0x1d, 0x1c, 0xe1, 0xb6,
+				]).into()],
                 1,
             ),
         };
@@ -584,14 +580,11 @@ mod tests {
             .unwrap(),
             unlock_conditions: UnlockConditions::new(
                 123,
-                vec![UnlockKey::new(
-                    Algorithm::ed25519(),
-                    PublicKey::new([
-                        0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b,
-                        0x47, 0xda, 0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28,
-                        0x8c, 0x1a, 0xd0, 0xdb, 0x1d, 0x1c, 0xe1, 0xb6,
-                    ]),
-                )],
+                vec![PublicKey::new([
+					0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b,
+					0x47, 0xda, 0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28,
+					0x8c, 0x1a, 0xd0, 0xdb, 0x1d, 0x1c, 0xe1, 0xb6,
+				]).into()],
                 1,
             ),
             claim_address: Address::new(
@@ -834,14 +827,11 @@ mod tests {
             }],
             unlock_conditions: UnlockConditions::new(
                 123,
-                vec![UnlockKey::new(
-                    Algorithm::ed25519(),
-                    PublicKey::new([
-                        0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b,
-                        0x47, 0xda, 0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28,
-                        0x8c, 0x1a, 0xd0, 0xdb, 0x1d, 0x1c, 0xe1, 0xb6,
-                    ]),
-                )],
+                vec![PublicKey::new([
+					0x9a, 0xac, 0x1f, 0xfb, 0x1c, 0xfd, 0x10, 0x79, 0xa8, 0xc6, 0xc8, 0x7b,
+					0x47, 0xda, 0x1d, 0x56, 0x7e, 0x35, 0xb9, 0x72, 0x34, 0x99, 0x3c, 0x28,
+					0x8c, 0x1a, 0xd0, 0xdb, 0x1d, 0x1c, 0xe1, 0xb6,
+				]).into()],
                 1,
             ),
             unlock_hash: Hash256::from([

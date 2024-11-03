@@ -1,14 +1,14 @@
+use chrono::{DateTime, Utc};
+use serde_json::json;
 use crate::encoding::to_writer;
-use crate::signing::{PublicKey, Signature, SigningState};
+use crate::signing::{PublicKey, Signature};
 #[allow(deprecated)]
 use crate::unlock_conditions::UnlockConditions;
 use crate::{Address, Hash256};
 use blake2b_simd::Params;
-use core::{fmt, slice::Iter};
-use serde::ser::SerializeTuple;
+use core::fmt;
+use serde::ser::{SerializeTuple, SerializeStruct};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
-use std::time::{self, SystemTime};
 use thiserror::Error;
 
 #[derive(Debug, PartialEq, Error)]
@@ -40,11 +40,11 @@ pub enum SpendPolicy {
     /// A policy that is only valid after a block height
     Above(u64),
     /// A policy that is only valid after a timestamp
-    After(SystemTime),
+    After(DateTime<Utc>),
     /// A policy that requires a valid signature from an ed25519 key pair
     PublicKey(PublicKey),
     /// A policy that requires a valid SHA256 hash preimage
-    Hash([u8; 32]),
+    Hash(Hash256),
     /// A threshold policy that requires n-of-m sub-policies to be met
     Threshold(u8, Vec<SpendPolicy>),
     /// An opaque policy that is not directly spendable
@@ -69,13 +69,26 @@ impl SpendPolicy {
         }
     }
 
+	fn type_str(&self) -> &str {
+		match self {
+			SpendPolicy::Above(_) => "above",
+			SpendPolicy::After(_) => "after",
+			SpendPolicy::PublicKey(_) => "pk",
+			SpendPolicy::Hash(_) => "h",
+			SpendPolicy::Threshold(_, _) => "thresh",
+			SpendPolicy::Opaque(_) => "opaque",
+			#[allow(deprecated)]
+			SpendPolicy::UnlockConditions(_) => "uc",
+		}
+	}
+
     /// Create a policy that is only valid after a certain block height
     pub fn above(height: u64) -> Self {
         Self::Above(height)
     }
 
     /// Create a policy that is only valid after a certain timestamp
-    pub fn after(timestamp: SystemTime) -> Self {
+    pub fn after(timestamp: DateTime<Utc>) -> Self {
         Self::After(timestamp)
     }
 
@@ -85,7 +98,7 @@ impl SpendPolicy {
     }
 
     /// Create a policy that requires a hash preimage
-    pub fn hash(hash: [u8; 32]) -> Self {
+    pub fn hash(hash: Hash256) -> Self {
         Self::Hash(hash)
     }
 
@@ -134,115 +147,16 @@ impl SpendPolicy {
         Address::from(state.finalize().as_bytes())
     }
 
-    /// Verify that the policy is satisfied by the given parameters.
-    pub fn verify(
-        &self,
-        signing_state: &SigningState,
-        hash: &Hash256,
-        signatures: &mut Iter<'_, Signature>,
-        preimages: &mut Iter<'_, Vec<u8>>,
-    ) -> Result<(), ValidationError> {
-        match self {
-            SpendPolicy::Above(height) => {
-                if *height > signing_state.index.height {
-                    Err(ValidationError::InvalidHeight)
-                } else {
-                    Ok(())
-                }
-            }
-            SpendPolicy::After(time) => {
-                if *time > signing_state.median_timestamp {
-                    Err(ValidationError::InvalidTimestamp)
-                } else {
-                    Ok(())
-                }
-            }
-            SpendPolicy::PublicKey(pk) => signatures
-                .next()
-                .ok_or(ValidationError::MissingSignature)
-                .and_then(|sig| {
-                    pk.verify(hash.as_ref(), sig)
-                        .then_some(())
-                        .ok_or(ValidationError::InvalidSignature)
-                }),
-            SpendPolicy::Hash(hash) => {
-                let preimage = preimages.next().ok_or(ValidationError::MissingPreimage)?;
-
-                let mut hasher = Sha256::new();
-                hasher.update(preimage);
-
-                let res: [u8; 32] = hasher.finalize().into();
-                if res == *hash {
-                    Ok(())
-                } else {
-                    Err(ValidationError::InvalidPreimage)
-                }
-            }
-            SpendPolicy::Threshold(n, ref policies) => {
-                let mut remaining = *n;
-                for policy in policies {
-                    #[allow(deprecated)]
-                    if let SpendPolicy::UnlockConditions(_) = policy {
-                        return Err(ValidationError::InvalidPolicy);
-                    }
-
-                    if policy
-                        .verify(signing_state, hash, signatures, preimages)
-                        .is_err()
-                    {
-                        continue;
-                    }
-
-                    remaining -= 1;
-                    if remaining == 0 {
-                        break;
-                    }
-                }
-                if remaining == 0 {
-                    Ok(())
-                } else {
-                    Err(ValidationError::ThresholdNotMet)
-                }
-            }
-            #[allow(deprecated)]
-            SpendPolicy::UnlockConditions(uc) => {
-                if uc.timelock > signing_state.index.height {
-                    return Err(ValidationError::InvalidHeight);
-                } else if uc.signatures_required > 255 {
-                    return Err(ValidationError::InvalidPolicy);
-                }
-
-                let mut remaining = uc.signatures_required;
-                for pk in uc.public_keys.iter() {
-                    let sig = signatures.next().ok_or(ValidationError::MissingSignature)?;
-                    if pk.public_key().verify(hash.as_ref(), sig) {
-                        remaining -= 1;
-                        if remaining == 0 {
-                            break;
-                        }
-                    } else {
-                        return Err(ValidationError::InvalidSignature);
-                    }
-                }
-
-                if remaining == 0 {
-                    return Ok(());
-                }
-                Err(ValidationError::ThresholdNotMet)
-            }
-            SpendPolicy::Opaque(_) => Err(ValidationError::OpaquePolicy),
-        }
-    }
-
     /// Encode the policy to a writer. This is used to handle recursive
     /// threshold policies. The version byte is only written for the top-level
     /// policy.
     fn serialize_policy<S: serde::ser::SerializeTuple>(&self, s: &mut S) -> Result<(), S::Error> {
-        s.serialize_element(&self.type_prefix())?; // type prefix
+		s.serialize_element(&self.type_prefix())?; // type prefix
         match self {
             SpendPolicy::Above(height) => s.serialize_element(height),
             SpendPolicy::After(time) => {
-                s.serialize_element(&time.duration_since(time::UNIX_EPOCH).unwrap().as_secs())
+				let ts = time.timestamp() as u64;
+                s.serialize_element(&ts)
             }
             SpendPolicy::PublicKey(pk) => {
                 let mut arr: [u8; 32] = [0; 32];
@@ -267,17 +181,45 @@ impl SpendPolicy {
 
 impl Serialize for SpendPolicy {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            String::serialize(&self.to_string(), serializer)
-        } else {
-            // unknown length since policie are recursive and need custom
-            // serialize/deserialize implementations anyway.
-            let mut s = serializer.serialize_tuple(0)?;
-            s.serialize_element(&1u8)?; // version
-            self.serialize_policy(&mut s)?;
-            s.end()
-        }
-    }
+		if !serializer.is_human_readable() {
+			let mut s = serializer.serialize_tuple(0)?;
+			s.serialize_element(&1u8)?; // version
+			self.serialize_policy(&mut s)?;
+			return s.end();
+		}
+		
+		let mut state = serializer.serialize_struct("SpendPolicy", 2)?;
+		state.serialize_field("type", self.type_str())?;
+        match self {
+            SpendPolicy::Above(height) => {
+                state.serialize_field("policy", height)?;
+            }
+            SpendPolicy::After(time) => {
+				let ts = time.timestamp() as u64;
+                state.serialize_field("policy", &ts)?;
+            }
+            SpendPolicy::PublicKey(pk) => {
+                state.serialize_field("policy", &pk)?;
+            }
+            SpendPolicy::Hash(hash) => {
+                state.serialize_field("policy", &hash)?;
+            }
+            SpendPolicy::Threshold(n, policies) => {
+				state.serialize_field("policy", &json!({
+					"n": n,
+					"of": policies,
+				}))?;
+			}
+			SpendPolicy::Opaque(addr) => {
+				state.serialize_field("policy", addr)?;
+			}
+			#[allow(deprecated)]
+			SpendPolicy::UnlockConditions(uc) => {
+				state.serialize_field("policy", uc)?;
+			}
+		}
+		state.end()
+	}
 }
 
 impl fmt::Display for SpendPolicy {
@@ -285,10 +227,7 @@ impl fmt::Display for SpendPolicy {
         match self {
             SpendPolicy::Above(height) => write!(f, "above({})", height),
             SpendPolicy::After(time) => {
-                let duration = time
-                    .duration_since(time::UNIX_EPOCH)
-                    .map_err(|_| fmt::Error)?;
-                write!(f, "after({})", duration.as_secs())
+                write!(f, "after({})", time.timestamp() as u64)
             }
             SpendPolicy::PublicKey(pk) => write!(f, "pk(0x{})", hex::encode(pk.as_ref())),
             SpendPolicy::Hash(hash) => write!(f, "h(0x{})", hex::encode(hash)),
@@ -306,11 +245,11 @@ impl fmt::Display for SpendPolicy {
             #[allow(deprecated)]
             SpendPolicy::UnlockConditions(uc) => {
                 write!(f, "uc({},{},[", uc.timelock, uc.signatures_required)?;
-                for (i, pk) in uc.public_keys.iter().enumerate() {
+                for (i, uk) in uc.public_keys.iter().enumerate() {
                     if i > 0 {
                         write!(f, ",")?;
                     }
-                    write!(f, "0x{}", hex::encode(pk.public_key().as_ref()))?;
+                    write!(f, "{}", uk)?;
                 }
                 write!(f, "])")
             }
@@ -334,26 +273,12 @@ impl SatisfiedPolicy {
             signatures,
         }
     }
-
-    /// Verify that the policy is satisfied by the given parameters.
-    /// This is a convenience method that calls `verify` on the policy.
-    pub fn verify(&self, state: &SigningState, sig_hash: &Hash256) -> Result<(), ValidationError> {
-        self.policy.verify(
-            state,
-            sig_hash,
-            &mut self.signatures.iter(),
-            &mut self.preimages.iter(),
-        )
-    }
 }
 
 #[cfg(test)]
 mod tests {
+    use chrono::TimeZone;
     use super::*;
-    use crate::signing::{NetworkHardforks, PrivateKey};
-    use crate::ChainIndex;
-    use rand::prelude::*;
-    use std::time::Duration;
 
     #[test]
     fn test_address() {
@@ -370,14 +295,14 @@ mod tests {
                 "addr:c2fba9b9607c800e80d9284ed0fb9a55737ba1bbd67311d0d9242dd6376bed0c6ee355e814fa",
             ),
             (
-                SpendPolicy::After(time::UNIX_EPOCH + Duration::from_secs(1433600000)),
+                SpendPolicy::After(Utc.timestamp_opt(1433600000, 0).unwrap()),
                 "addr:5bdb96e33ffdf72619ad38bee57ad4db9eb242aeb2ee32020ba16179af5d46d501bd2011806b",
             ),
             (
-                SpendPolicy::Hash([
+                SpendPolicy::Hash(Hash256::from([
                     1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, 0, 0, 0, 0,
-                ]),
+                ])),
                 "addr:1cc0fc4cde659333cf7e61971cc5025c5a6b4759c9d1c1d438227c3eb57d841512d4cd4ce620",
             ),
             (
@@ -393,9 +318,7 @@ mod tests {
                             2,
                             vec![
                                 SpendPolicy::PublicKey(PublicKey::new([0; 32])),
-                                SpendPolicy::After(
-                                    time::UNIX_EPOCH + Duration::from_secs(1433600000),
-                                ),
+                                SpendPolicy::After(Utc.timestamp_opt(1433600000, 0).unwrap()),
                             ],
                         ),
                     ],
@@ -410,348 +333,12 @@ mod tests {
     }
 
     #[test]
-    fn test_verify() {
-        struct PolicyTest {
-            policy: SpendPolicy,
-            state: SigningState,
-            hash: Hash256,
-            signatures: Vec<Signature>,
-            preimages: Vec<Vec<u8>>,
-            result: Result<(), ValidationError>,
-        }
-        let test_cases = vec![
-            PolicyTest {
-                policy: SpendPolicy::Above(100),
-                state: SigningState {
-                    index: ChainIndex {
-                        height: 99,
-                        id: [0; 32],
-                    },
-                    median_timestamp: time::UNIX_EPOCH + Duration::from_secs(99),
-                    hardforks: NetworkHardforks::default(),
-                },
-                hash: Hash256::default(),
-                signatures: vec![],
-                preimages: vec![],
-                result: Err(ValidationError::InvalidHeight),
-            },
-            PolicyTest {
-                policy: SpendPolicy::Above(100),
-                state: SigningState {
-                    index: ChainIndex {
-                        height: 100,
-                        id: [0; 32],
-                    },
-                    median_timestamp: time::UNIX_EPOCH + Duration::from_secs(99),
-                    hardforks: NetworkHardforks::default(),
-                },
-                hash: Hash256::default(),
-                signatures: vec![],
-                preimages: vec![],
-                result: Ok(()),
-            },
-            PolicyTest {
-                policy: SpendPolicy::After(time::UNIX_EPOCH + Duration::from_secs(100)),
-                state: SigningState {
-                    index: ChainIndex {
-                        height: 100,
-                        id: [0; 32],
-                    },
-                    median_timestamp: time::UNIX_EPOCH + Duration::from_secs(99),
-                    hardforks: NetworkHardforks::default(),
-                },
-                hash: Hash256::default(),
-                signatures: vec![],
-                preimages: vec![],
-                result: Err(ValidationError::InvalidTimestamp),
-            },
-            PolicyTest {
-                policy: SpendPolicy::After(time::UNIX_EPOCH + Duration::from_secs(100)),
-                state: SigningState {
-                    index: ChainIndex {
-                        height: 100,
-                        id: [0; 32],
-                    },
-                    median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
-                    hardforks: NetworkHardforks::default(),
-                },
-                hash: Hash256::default(),
-                signatures: vec![],
-                preimages: vec![],
-                result: Ok(()),
-            },
-            PolicyTest {
-                policy: SpendPolicy::PublicKey(PublicKey::new([0; 32])),
-                state: SigningState {
-                    index: ChainIndex {
-                        height: 100,
-                        id: [0; 32],
-                    },
-                    median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
-                    hardforks: NetworkHardforks::default(),
-                },
-                hash: Hash256::default(),
-                signatures: vec![],
-                preimages: vec![],
-                result: Err(ValidationError::MissingSignature),
-            },
-            PolicyTest {
-                policy: SpendPolicy::PublicKey(PublicKey::new([0; 32])),
-                state: SigningState {
-                    index: ChainIndex {
-                        height: 100,
-                        id: [0; 32],
-                    },
-                    median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
-                    hardforks: NetworkHardforks::default(),
-                },
-                hash: Hash256::default(),
-                signatures: vec![Signature::new([0; 64])],
-                preimages: vec![],
-                result: Err(ValidationError::InvalidSignature),
-            },
-            {
-                let pk = PrivateKey::from_seed(&random());
-                let sig_hash = Hash256::from(random::<[u8; 32]>());
-
-                PolicyTest {
-                    policy: SpendPolicy::PublicKey(pk.public_key()),
-                    state: SigningState {
-                        index: ChainIndex {
-                            height: 100,
-                            id: [0; 32],
-                        },
-                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
-                        hardforks: NetworkHardforks::default(),
-                    },
-                    hash: sig_hash,
-                    signatures: vec![pk.sign(sig_hash.as_ref())],
-                    preimages: vec![],
-                    result: Ok(()),
-                }
-            },
-            {
-                let pk = PrivateKey::from_seed(&random());
-                let sig_hash = Hash256::from(random::<[u8; 32]>());
-
-                PolicyTest {
-                    policy: SpendPolicy::Threshold(
-                        2,
-                        vec![
-                            SpendPolicy::PublicKey(pk.public_key()),
-                            SpendPolicy::Above(100),
-                        ],
-                    ),
-                    state: SigningState {
-                        index: ChainIndex {
-                            height: 99,
-                            id: [0; 32],
-                        },
-                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
-                        hardforks: NetworkHardforks::default(),
-                    },
-                    hash: sig_hash,
-                    signatures: vec![pk.sign(sig_hash.as_ref())],
-                    preimages: vec![],
-                    result: Err(ValidationError::ThresholdNotMet),
-                }
-            },
-            {
-                let pk = PrivateKey::from_seed(&random());
-                let sig_hash = Hash256::from(random::<[u8; 32]>());
-
-                PolicyTest {
-                    policy: SpendPolicy::Threshold(
-                        2,
-                        vec![
-                            SpendPolicy::PublicKey(pk.public_key()),
-                            SpendPolicy::Above(100),
-                        ],
-                    ),
-                    state: SigningState {
-                        index: ChainIndex {
-                            height: 100,
-                            id: [0; 32],
-                        },
-                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
-                        hardforks: NetworkHardforks::default(),
-                    },
-                    hash: sig_hash,
-                    signatures: vec![Signature::new([0; 64])],
-                    preimages: vec![],
-                    result: Err(ValidationError::ThresholdNotMet),
-                }
-            },
-            {
-                let pk = PrivateKey::from_seed(&random());
-                let sig_hash = Hash256::from(random::<[u8; 32]>());
-
-                PolicyTest {
-                    policy: SpendPolicy::Threshold(
-                        2,
-                        vec![
-                            SpendPolicy::PublicKey(pk.public_key()),
-                            SpendPolicy::Above(100),
-                        ],
-                    ),
-                    state: SigningState {
-                        index: ChainIndex {
-                            height: 100,
-                            id: [0; 32],
-                        },
-                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
-                        hardforks: NetworkHardforks::default(),
-                    },
-                    hash: sig_hash,
-                    signatures: vec![pk.sign(sig_hash.as_ref())],
-                    preimages: vec![],
-                    result: Ok(()),
-                }
-            },
-            {
-                let pk = PrivateKey::from_seed(&random());
-                let sig_hash = Hash256::from(random::<[u8; 32]>());
-
-                PolicyTest {
-                    policy: SpendPolicy::Threshold(
-                        1,
-                        vec![
-                            SpendPolicy::PublicKey(pk.public_key()),
-                            SpendPolicy::Opaque(Address::new([0; 32])),
-                        ],
-                    ),
-                    state: SigningState {
-                        index: ChainIndex {
-                            height: 100,
-                            id: [0; 32],
-                        },
-                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
-                        hardforks: NetworkHardforks::default(),
-                    },
-                    hash: sig_hash,
-                    signatures: vec![pk.sign(sig_hash.as_ref())],
-                    preimages: vec![],
-                    result: Ok(()),
-                }
-            },
-            {
-                let pk = PrivateKey::from_seed(&random());
-                let sig_hash = Hash256::from(random::<[u8; 32]>());
-
-                PolicyTest {
-                    policy: SpendPolicy::Threshold(
-                        1,
-                        vec![
-                            SpendPolicy::PublicKey(pk.public_key()),
-                            SpendPolicy::Opaque(Address::new([0; 32])),
-                        ],
-                    ),
-                    state: SigningState {
-                        index: ChainIndex {
-                            height: 100,
-                            id: [0; 32],
-                        },
-                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
-                        hardforks: NetworkHardforks::default(),
-                    },
-                    hash: sig_hash,
-                    signatures: vec![],
-                    preimages: vec![],
-                    result: Err(ValidationError::ThresholdNotMet),
-                }
-            },
-            {
-                let mut preimage = [0; 64];
-                thread_rng().fill(&mut preimage);
-
-                let mut hasher = Sha256::new();
-                hasher.update(preimage);
-                let h: [u8; 32] = hasher.finalize().into();
-
-                PolicyTest {
-                    policy: SpendPolicy::Hash(h),
-                    state: SigningState {
-                        index: ChainIndex {
-                            height: 100,
-                            id: [0; 32],
-                        },
-                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
-                        hardforks: NetworkHardforks::default(),
-                    },
-                    hash: Hash256::default(),
-                    signatures: vec![],
-                    preimages: vec![],
-                    result: Err(ValidationError::MissingPreimage),
-                }
-            },
-            {
-                let mut preimage = [0; 64];
-                thread_rng().fill(&mut preimage);
-
-                let mut hasher = Sha256::new();
-                hasher.update(preimage);
-                let h: [u8; 32] = hasher.finalize().into();
-
-                PolicyTest {
-                    policy: SpendPolicy::Hash(h),
-                    state: SigningState {
-                        index: ChainIndex {
-                            height: 100,
-                            id: [0; 32],
-                        },
-                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
-                        hardforks: NetworkHardforks::default(),
-                    },
-                    hash: Hash256::default(),
-                    signatures: vec![],
-                    preimages: vec![[0; 64].to_vec()],
-                    result: Err(ValidationError::InvalidPreimage),
-                }
-            },
-            {
-                let mut preimage = [0; 64];
-                thread_rng().fill(&mut preimage);
-
-                let mut hasher = Sha256::new();
-                hasher.update(preimage);
-                let h: [u8; 32] = hasher.finalize().into();
-
-                PolicyTest {
-                    policy: SpendPolicy::Hash(h),
-                    state: SigningState {
-                        index: ChainIndex {
-                            height: 100,
-                            id: [0; 32],
-                        },
-                        median_timestamp: time::UNIX_EPOCH + Duration::from_secs(100),
-                        hardforks: NetworkHardforks::default(),
-                    },
-                    hash: Hash256::default(),
-                    signatures: vec![],
-                    preimages: vec![preimage.to_vec()],
-                    result: Ok(()),
-                }
-            },
-        ];
-
-        for test in test_cases {
-            let result = test.policy.verify(
-                &test.state,
-                &test.hash,
-                &mut test.signatures.iter(),
-                &mut test.preimages.iter(),
-            );
-            assert_eq!(result, test.result, "{}", test.policy);
-        }
-    }
-
-    #[test]
     fn test_opaque_policy() {
         let test_cases = vec![
             SpendPolicy::above(100),
-            SpendPolicy::after(time::UNIX_EPOCH + Duration::from_secs(100)),
+            SpendPolicy::after(Utc.timestamp_opt(100, 0).unwrap()),
             SpendPolicy::public_key(PublicKey::new([0; 32])),
-            SpendPolicy::hash([0; 32]),
+            SpendPolicy::hash(Hash256::from([0; 32])),
             SpendPolicy::threshold(
                 2,
                 vec![
@@ -768,7 +355,7 @@ mod tests {
                         2,
                         vec![
                             SpendPolicy::public_key(PublicKey::new([0; 32])),
-                            SpendPolicy::after(time::UNIX_EPOCH + Duration::from_secs(100)),
+                            SpendPolicy::after(Utc.timestamp_opt(100, 0).unwrap()),
                         ],
                     ),
                     SpendPolicy::PublicKey(PublicKey::new([1; 32])),
@@ -807,4 +394,59 @@ mod tests {
             }
         }
     }
+
+	#[test]
+	fn test_policy_json() {
+		let test_cases = vec![
+            (SpendPolicy::above(100), "{\"type\":\"above\",\"policy\":100}"),
+            ( SpendPolicy::after(Utc.timestamp_opt(100, 0).unwrap()), "{\"type\":\"after\",\"policy\":100}"),
+            ( SpendPolicy::public_key(PublicKey::new([1; 32])), "{\"type\":\"pk\",\"policy\":\"ed25519:0101010101010101010101010101010101010101010101010101010101010101\"}"),
+            ( SpendPolicy::hash(Hash256::from([0; 32])), "{\"type\":\"h\",\"policy\":\"0000000000000000000000000000000000000000000000000000000000000000\"}"),
+            ( 
+				SpendPolicy::threshold(
+					2,
+					vec![
+						SpendPolicy::public_key(PublicKey::new([0; 32])),
+						SpendPolicy::above(100),
+					],
+				), 
+				"{\"type\":\"thresh\",\"policy\":{\"n\":2,\"of\":[{\"policy\":\"ed25519:0000000000000000000000000000000000000000000000000000000000000000\",\"type\":\"pk\"},{\"policy\":100,\"type\":\"above\"}]}}",
+			),
+            ( 
+				SpendPolicy::threshold(
+					2,
+					vec![
+						SpendPolicy::public_key(PublicKey::new([0; 32])),
+						SpendPolicy::above(100),
+						SpendPolicy::threshold(
+							2,
+							vec![
+								SpendPolicy::public_key(PublicKey::new([0; 32])),
+								SpendPolicy::after(Utc.timestamp_opt(100, 0).unwrap()),
+							],
+						),
+						SpendPolicy::PublicKey(PublicKey::new([0; 32])),
+					],
+				), 
+				"{\"type\":\"thresh\",\"policy\":{\"n\":2,\"of\":[{\"policy\":\"ed25519:0000000000000000000000000000000000000000000000000000000000000000\",\"type\":\"pk\"},{\"policy\":100,\"type\":\"above\"},{\"policy\":{\"n\":2,\"of\":[{\"policy\":\"ed25519:0000000000000000000000000000000000000000000000000000000000000000\",\"type\":\"pk\"},{\"policy\":100,\"type\":\"after\"}]},\"type\":\"thresh\"},{\"policy\":\"ed25519:0000000000000000000000000000000000000000000000000000000000000000\",\"type\":\"pk\"}]}}"
+			),
+			(
+				#[allow(deprecated)]
+				SpendPolicy::UnlockConditions(UnlockConditions {
+					timelock: 100,
+					signatures_required: 2,
+					public_keys: vec![
+						PublicKey::new([0; 32]).into(),
+						PublicKey::new([1; 32]).into(),
+					],
+				}),
+				"{\"type\":\"uc\",\"policy\":{\"timelock\":100,\"publicKeys\":[\"ed25519:0000000000000000000000000000000000000000000000000000000000000000\",\"ed25519:0101010101010101010101010101010101010101010101010101010101010101\"],\"signaturesRequired\":2}}",
+			)
+        ];
+
+		for (policy, expected) in test_cases {
+			let json = serde_json::to_string(&policy).unwrap();
+			assert_eq!(json, expected);
+		}
+	}
 }
