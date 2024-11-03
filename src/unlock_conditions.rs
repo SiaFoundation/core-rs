@@ -397,37 +397,37 @@ mod tests {
                     .unwrap(),
             ),
             (
-                "addr:c4850dbcddb9dfac6f44007ec58fe824bc58e3de2432de478f3e53f7965c2afd7ea651b6c2bf",
+                "c4850dbcddb9dfac6f44007ec58fe824bc58e3de2432de478f3e53f7965c2afd7ea651b6c2bf",
                 hex::decode("6f5c23f8797f93d3d3c689fe1a3f5d9a1fbf326a7a6ea51fecbeaa9aba46f180")
                     .unwrap(),
             ),
             (
-                "addr:6a8f4f1d5a7405aa24cb1fb2a3c1dcaae74175c712002627289b5cd9dd887088afe605460abd",
+                "6a8f4f1d5a7405aa24cb1fb2a3c1dcaae74175c712002627289b5cd9dd887088afe605460abd",
                 hex::decode("45f12760f6005a93cece248f5ec78adf15f9d29dafe397c8c28fefc72781d6fb")
                     .unwrap(),
             ),
             (
-                "addr:e464b9b1c9282d8edeed5832b95405761db6dacf6a156fc9119a396bdc8f8892815c7dce20fd",
+                "e464b9b1c9282d8edeed5832b95405761db6dacf6a156fc9119a396bdc8f8892815c7dce20fd",
                 hex::decode("1c12d17a2a8b2c25950872f312d5d0758f07d8357c98897fc472565a44b3d1f1")
                     .unwrap(),
             ),
             (
-                "addr:9ae839af434aa13de6e8baa280541716811dcbaa33165fea5e9bad0c33998c10f16fcac4f214",
+                "9ae839af434aa13de6e8baa280541716811dcbaa33165fea5e9bad0c33998c10f16fcac4f214",
                 hex::decode("686d28bf7e4b4cadf759994caed1e52092e12c11cef257a265b50402dbd70c3b")
                     .unwrap(),
             ),
             (
-                "addr:e92722d80103af9574f19a6cf72aab424335927eb7da022455f53314e3587dc8ece40d254981",
+                "e92722d80103af9574f19a6cf72aab424335927eb7da022455f53314e3587dc8ece40d254981",
                 hex::decode("b2e9ddef40897219a997ae7af277a5550cc10c54e793b6d2146de94df3bd552b")
                     .unwrap(),
             ),
             (
-                "addr:e2a02510f242f35e46b8840d8da42c087ea906b09d8e454c734663650236977da0362dd2ab43",
+                "e2a02510f242f35e46b8840d8da42c087ea906b09d8e454c734663650236977da0362dd2ab43",
                 hex::decode("4f756e475a706cdcec8eb1c02b21a591e0c0450cc0408ae8aec82ae97f634ecf")
                     .unwrap(),
             ),
             (
-                "addr:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0",
+                "8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0",
                 hex::decode("cd46b523d2ee92f205a00726d8544094bb4fe58142ecffd20ea32b37b6e6bfc3")
                     .unwrap(),
             ),
@@ -441,8 +441,8 @@ mod tests {
 
             assert_eq!(addr, expected);
             // test string round-trip
-            if !expected_str.starts_with("addr:") {
-                assert_eq!(addr.to_string(), "addr:".to_string() + expected_str)
+            if !expected_str.starts_with("") {
+                assert_eq!(addr.to_string(), "".to_string() + expected_str)
             } else {
                 assert_eq!(addr.to_string(), expected_str)
             }
@@ -454,19 +454,19 @@ mod tests {
         const PHRASE: &str =
             "song renew capable taxi follow sword more hybrid laptop dance unfair poem";
         let test_addresses = vec![
-			(0, Address::parse_string("addr:16e09f8dc8a100a03ba1f9503e4035661738d1bea0b6cdc9bb012d3cd25edaacfd780909e550").unwrap()),
-			(1, Address::parse_string("addr:cb016a7018485325fa299bc247113e3792dbea27ee08d2bb57a16cb0804fa449d3a91ee647a1").unwrap()),
-			(2, Address::parse_string("addr:5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34").unwrap()),
-			(3, Address::parse_string("addr:c3bc7bc1431460ed2556874cb63714760120125da758ebbd78198534cb3d25774352fdbb3e8b").unwrap()),
-			(4, Address::parse_string("addr:ebc7eae02ecf76e3ba7312bab6b6f71e9d255801a3a3b83f7cc26bd520b2c27a511cd8604e4b").unwrap()),
-			(5, Address::parse_string("addr:fce241a44b944b10f414782dd35f5d96b92aec3d6da92a45ae44b7dc8cfb4b4ba97a34ce7032").unwrap()),
-			(6, Address::parse_string("addr:36d253e7c3af2213eccaf0a61c6d24be8668f72af6e773463f3c41efc8bb70f2b353b90de9dd").unwrap()),
-			(7, Address::parse_string("addr:c8f85375fb264428c86594863440f856db1da4614d75f4a30e3d9db3dfc88af6995128c6a845").unwrap()),
-			(8, Address::parse_string("addr:85ef2ba14ee464060570b16bddaac91353961e7545067ccdf868a0ece305f00d2c08ec6844c6").unwrap()),
-			(9, Address::parse_string("addr:9dcf644245eba91e7ea70c47ccadf479e6834c1c1221335e7246e0a6bc40e18362c4faa760b8").unwrap()),
-			(4294967295, Address::parse_string("addr:a906891f0c524fd272a905aa5dd7018c69e5d68222385cbd9d5292f38f021ce4bf00953a0659").unwrap()),
-			(4294967296, Address::parse_string("addr:b6ab338e624a304add7afe205361ac71821b87559a3b9c5b3735eaafa914eed533613a0af7fa").unwrap()),
-			(18446744073709551615, Address::parse_string("addr:832d0e8b5f967677d812d75559c373d930ad16eb90c31c29982a190bb7db9edf9438fd827938").unwrap()),
+			(0, Address::parse_string("16e09f8dc8a100a03ba1f9503e4035661738d1bea0b6cdc9bb012d3cd25edaacfd780909e550").unwrap()),
+			(1, Address::parse_string("cb016a7018485325fa299bc247113e3792dbea27ee08d2bb57a16cb0804fa449d3a91ee647a1").unwrap()),
+			(2, Address::parse_string("5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34").unwrap()),
+			(3, Address::parse_string("c3bc7bc1431460ed2556874cb63714760120125da758ebbd78198534cb3d25774352fdbb3e8b").unwrap()),
+			(4, Address::parse_string("ebc7eae02ecf76e3ba7312bab6b6f71e9d255801a3a3b83f7cc26bd520b2c27a511cd8604e4b").unwrap()),
+			(5, Address::parse_string("fce241a44b944b10f414782dd35f5d96b92aec3d6da92a45ae44b7dc8cfb4b4ba97a34ce7032").unwrap()),
+			(6, Address::parse_string("36d253e7c3af2213eccaf0a61c6d24be8668f72af6e773463f3c41efc8bb70f2b353b90de9dd").unwrap()),
+			(7, Address::parse_string("c8f85375fb264428c86594863440f856db1da4614d75f4a30e3d9db3dfc88af6995128c6a845").unwrap()),
+			(8, Address::parse_string("85ef2ba14ee464060570b16bddaac91353961e7545067ccdf868a0ece305f00d2c08ec6844c6").unwrap()),
+			(9, Address::parse_string("9dcf644245eba91e7ea70c47ccadf479e6834c1c1221335e7246e0a6bc40e18362c4faa760b8").unwrap()),
+			(4294967295, Address::parse_string("a906891f0c524fd272a905aa5dd7018c69e5d68222385cbd9d5292f38f021ce4bf00953a0659").unwrap()),
+			(4294967296, Address::parse_string("b6ab338e624a304add7afe205361ac71821b87559a3b9c5b3735eaafa914eed533613a0af7fa").unwrap()),
+			(18446744073709551615, Address::parse_string("832d0e8b5f967677d812d75559c373d930ad16eb90c31c29982a190bb7db9edf9438fd827938").unwrap()),
 		];
 
         let seed = Seed::from_mnemonic(PHRASE).unwrap();

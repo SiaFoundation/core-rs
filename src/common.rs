@@ -276,7 +276,7 @@ impl fmt::Display for Address {
             .finalize();
 
         buf[32..].copy_from_slice(&h.as_bytes()[..6]);
-        write!(f, "addr:{}", hex::encode(buf))
+        write!(f, "{}", hex::encode(buf))
     }
 }
 
@@ -299,7 +299,7 @@ mod tests {
         // json
         let hash_serialized = serde_json::to_string(&hash).unwrap();
         let hash_deserialized: Hash256 = serde_json::from_str(&hash_serialized).unwrap();
-        assert_eq!(hash_serialized, format!("\"h:{0}\"", hash_str)); // serialize
+        assert_eq!(hash_serialized, format!("\"{0}\"", hash_str)); // serialize
         assert_eq!(hash_deserialized, hash); // deserialize
     }
 
@@ -320,7 +320,7 @@ mod tests {
         let addr_deserialized: Address = serde_json::from_str(&addr_serialized).unwrap();
         assert_eq!(
             addr_serialized,
-            format!("\"addr:{0}{1}\"", addr_str, checksum)
+            format!("\"{0}{1}\"", addr_str, checksum)
         ); // serialize
         assert_eq!(addr_deserialized, address); // deserialize
     }

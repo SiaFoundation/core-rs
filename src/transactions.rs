@@ -568,7 +568,7 @@ mod tests {
         let siacoin_input_serialized = serde_json::to_string(&siacoin_input).unwrap();
         let siacoin_input_deserialized: SiacoinInput =
             serde_json::from_str(&siacoin_input_serialized).unwrap();
-        assert_eq!(siacoin_input_serialized, "{\"parentID\":\"scoid:b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24\",\"unlockConditions\":{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1}}");
+        assert_eq!(siacoin_input_serialized, "{\"parentID\":\"b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24\",\"unlockConditions\":{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1}}");
         assert_eq!(siacoin_input_deserialized, siacoin_input);
     }
 
@@ -620,14 +620,14 @@ mod tests {
         let siafund_input_serialized = serde_json::to_string(&siafund_input).unwrap();
         let siafund_input_deserialized: SiafundInput =
             serde_json::from_str(&siafund_input_serialized).unwrap();
-        assert_eq!(siafund_input_serialized, "{\"parentID\":\"sfoid:b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24\",\"unlockConditions\":{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1},\"claimAddress\":\"addr:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0\"}");
+        assert_eq!(siafund_input_serialized, "{\"parentID\":\"b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24\",\"unlockConditions\":{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1},\"claimAddress\":\"8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0\"}");
         assert_eq!(siafund_input_deserialized, siafund_input);
     }
 
     #[test]
     fn test_serialize_siacoin_output() {
         let addr_str =
-            "addr:000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69";
+            "000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69";
         let output = SiacoinOutput {
             value: Currency::new(67856467336433871),
             address: Address::parse_string(addr_str).unwrap(),
@@ -699,7 +699,7 @@ mod tests {
             serde_json::from_str(&signature_serialized).unwrap();
         assert_eq!(
             signature_serialized,
-            "{\"parentID\":\"h:b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24\",\"publicKeyIndex\":1,\"timelock\":2,\"coveredFields\":{\"wholeTransaction\":true,\"siacoinInputs\":[],\"siacoinOutputs\":[],\"fileContracts\":[],\"fileContractRevisions\":[],\"storageProofs\":[],\"siafundInputs\":[],\"siafundOutputs\":[],\"minerFees\":[],\"arbitraryData\":[],\"signatures\":[]},\"signature\":\"AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAw==\"}",
+            "{\"parentID\":\"b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24\",\"publicKeyIndex\":1,\"timelock\":2,\"coveredFields\":{\"wholeTransaction\":true,\"siacoinInputs\":[],\"siacoinOutputs\":[],\"fileContracts\":[],\"fileContractRevisions\":[],\"storageProofs\":[],\"siafundInputs\":[],\"siafundOutputs\":[],\"minerFees\":[],\"arbitraryData\":[],\"signatures\":[]},\"signature\":\"AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAw==\"}",
         );
         assert_eq!(signature_deserialized, signature);
     }
@@ -707,7 +707,7 @@ mod tests {
     #[test]
     fn test_serialize_siafund_output() {
         let addr_str =
-            "addr:000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69";
+            "000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69";
         let output = SiafundOutput {
             value: Currency::new(67856467336433871),
             address: Address::parse_string(addr_str).unwrap(),
@@ -795,7 +795,7 @@ mod tests {
         let contract_serialized = serde_json::to_string(&contract).unwrap();
         let contract_deserialized: FileContract =
             serde_json::from_str(&contract_serialized).unwrap();
-        assert_eq!(contract_serialized, "{\"filesize\":1,\"fileMerkleRoot\":\"h:0101010000000000000000000000000000000000000000000000000000000000\",\"windowStart\":2,\"windowEnd\":3,\"payout\":\"456\",\"validProofOutputs\":[{\"value\":\"789\",\"address\":\"addr:02020200000000000000000000000000000000000000000000000000000000008749787b31db\"}],\"missedProofOutputs\":[{\"value\":\"101112\",\"address\":\"addr:0303030000000000000000000000000000000000000000000000000000000000c596d559a239\"}],\"unlockHash\":\"h:0404040000000000000000000000000000000000000000000000000000000000\",\"revisionNumber\":4}");
+        assert_eq!(contract_serialized, "{\"filesize\":1,\"fileMerkleRoot\":\"0101010000000000000000000000000000000000000000000000000000000000\",\"windowStart\":2,\"windowEnd\":3,\"payout\":\"456\",\"validProofOutputs\":[{\"value\":\"789\",\"address\":\"02020200000000000000000000000000000000000000000000000000000000008749787b31db\"}],\"missedProofOutputs\":[{\"value\":\"101112\",\"address\":\"0303030000000000000000000000000000000000000000000000000000000000c596d559a239\"}],\"unlockHash\":\"0404040000000000000000000000000000000000000000000000000000000000\",\"revisionNumber\":4}");
         assert_eq!(contract_deserialized, contract);
     }
 
@@ -871,7 +871,7 @@ mod tests {
         let revision_serialized = serde_json::to_string(&revision).unwrap();
         let revision_deserialized: FileContractRevision =
             serde_json::from_str(&revision_serialized).unwrap();
-        assert_eq!(revision_serialized, "{\"parentID\":\"fcid:0908070000000000000000000000000000000000000000000000000000000000\",\"unlockConditions\":{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1},\"revisionNumber\":4,\"filesize\":1,\"fileMerkleRoot\":\"h:0101010000000000000000000000000000000000000000000000000000000000\",\"windowStart\":2,\"windowEnd\":3,\"validProofOutputs\":[{\"value\":\"789\",\"address\":\"addr:02020200000000000000000000000000000000000000000000000000000000008749787b31db\"}],\"missedProofOutputs\":[{\"value\":\"789\",\"address\":\"addr:0303030000000000000000000000000000000000000000000000000000000000c596d559a239\"}],\"unlockHash\":\"h:0404040000000000000000000000000000000000000000000000000000000000\"}");
+        assert_eq!(revision_serialized, "{\"parentID\":\"0908070000000000000000000000000000000000000000000000000000000000\",\"unlockConditions\":{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1},\"revisionNumber\":4,\"filesize\":1,\"fileMerkleRoot\":\"0101010000000000000000000000000000000000000000000000000000000000\",\"windowStart\":2,\"windowEnd\":3,\"validProofOutputs\":[{\"value\":\"789\",\"address\":\"02020200000000000000000000000000000000000000000000000000000000008749787b31db\"}],\"missedProofOutputs\":[{\"value\":\"789\",\"address\":\"0303030000000000000000000000000000000000000000000000000000000000c596d559a239\"}],\"unlockHash\":\"0404040000000000000000000000000000000000000000000000000000000000\"}");
         assert_eq!(revision_deserialized, revision);
     }
 
@@ -922,7 +922,7 @@ mod tests {
         let storage_proof_serialized = serde_json::to_string(&storage_proof).unwrap();
         let storage_proof_deserialized: StorageProof =
             serde_json::from_str(&storage_proof_serialized).unwrap();
-        assert_eq!(storage_proof_serialized, "{\"parentID\":\"fcid:b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24\",\"leaf\":\"0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40\",\"proof\":[\"h:0102030000000000000000000000000000000000000000000000000000000000\",\"h:0405060000000000000000000000000000000000000000000000000000000000\"]}");
+        assert_eq!(storage_proof_serialized, "{\"parentID\":\"b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24\",\"leaf\":\"0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40\",\"proof\":[\"0102030000000000000000000000000000000000000000000000000000000000\",\"0405060000000000000000000000000000000000000000000000000000000000\"]}");
         assert_eq!(storage_proof_deserialized, storage_proof);
     }
 
@@ -981,7 +981,7 @@ mod tests {
 					siacoin_outputs: vec![
 						SiacoinOutput{
 							value: Currency::new(67856467336433871),
-							address: Address::parse_string("addr:000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69").unwrap(),
+							address: Address::parse_string("000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69").unwrap(),
 						}
 					],
 					file_contracts: Vec::new(),
@@ -993,7 +993,7 @@ mod tests {
 					arbitrary_data: Vec::new(),
 					signatures: Vec::new(),
 				},
-				"h:a4b1855c546db7ec902237f730717faae96187db8ce9fe139504323a639f731e"
+				"a4b1855c546db7ec902237f730717faae96187db8ce9fe139504323a639f731e"
 			)
 		];
 
@@ -1045,7 +1045,7 @@ mod tests {
 					siacoin_outputs: vec![
 						SiacoinOutput{
 							value: Currency::new(67856467336433871),
-							address: Address::parse_string("addr:000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69").unwrap(),
+							address: Address::parse_string("000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69").unwrap(),
 						}
 					],
 					file_contracts: Vec::new(),
