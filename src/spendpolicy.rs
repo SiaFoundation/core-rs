@@ -405,17 +405,17 @@ mod tests {
             ( SpendPolicy::after(Utc.timestamp_opt(100, 0).unwrap()), "{\"type\":\"after\",\"policy\":100}"),
             ( SpendPolicy::public_key(PublicKey::new([1; 32])), "{\"type\":\"pk\",\"policy\":\"ed25519:0101010101010101010101010101010101010101010101010101010101010101\"}"),
             ( SpendPolicy::hash(Hash256::from([0; 32])), "{\"type\":\"h\",\"policy\":\"0000000000000000000000000000000000000000000000000000000000000000\"}"),
-            ( 
+            (
 				SpendPolicy::threshold(
 					2,
 					vec![
 						SpendPolicy::public_key(PublicKey::new([0; 32])),
 						SpendPolicy::above(100),
 					],
-				), 
+				),
 				"{\"type\":\"thresh\",\"policy\":{\"n\":2,\"of\":[{\"policy\":\"ed25519:0000000000000000000000000000000000000000000000000000000000000000\",\"type\":\"pk\"},{\"policy\":100,\"type\":\"above\"}]}}",
 			),
-            ( 
+            (
 				SpendPolicy::threshold(
 					2,
 					vec![
@@ -430,7 +430,7 @@ mod tests {
 						),
 						SpendPolicy::PublicKey(PublicKey::new([0; 32])),
 					],
-				), 
+				),
 				"{\"type\":\"thresh\",\"policy\":{\"n\":2,\"of\":[{\"policy\":\"ed25519:0000000000000000000000000000000000000000000000000000000000000000\",\"type\":\"pk\"},{\"policy\":100,\"type\":\"above\"},{\"policy\":{\"n\":2,\"of\":[{\"policy\":\"ed25519:0000000000000000000000000000000000000000000000000000000000000000\",\"type\":\"pk\"},{\"policy\":100,\"type\":\"after\"}]},\"type\":\"thresh\"},{\"policy\":\"ed25519:0000000000000000000000000000000000000000000000000000000000000000\",\"type\":\"pk\"}]}}"
 			),
 			(
