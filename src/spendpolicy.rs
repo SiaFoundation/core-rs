@@ -12,6 +12,24 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
 
+const POLICY_ABOVE_PREFIX: u8 = 1;
+const POLICY_AFTER_PREFIX: u8 = 2;
+const POLICY_PUBLIC_KEY_PREFIX: u8 = 3;
+const POLICY_HASH_PREFIX: u8 = 4;
+const POLICY_THRESHOLD_PREFIX: u8 = 5;
+const POLICY_OPAQUE_PREFIX: u8 = 6;
+#[deprecated]
+const POLICY_UNLOCK_CONDITIONS_PREFIX: u8 = 7;
+
+const POLICY_ABOVE_STR: &str = "above";
+const POLICY_AFTER_STR: &str = "after";
+const POLICY_PUBLIC_KEY_STR: &str = "pk";
+const POLICY_HASH_STR: &str = "h";
+const POLICY_THRESHOLD_STR: &str = "thresh";
+const POLICY_OPAQUE_STR: &str = "opaque";
+#[deprecated]
+const POLICY_UNLOCK_CONDITIONS_STR: &str = "uc";
+
 #[derive(Debug, PartialEq, Error)]
 pub enum ValidationError {
     #[error("opaque policy")]
@@ -59,27 +77,27 @@ pub enum SpendPolicy {
 impl SpendPolicy {
     fn type_prefix(&self) -> u8 {
         match self {
-            SpendPolicy::Above(_) => 1,
-            SpendPolicy::After(_) => 2,
-            SpendPolicy::PublicKey(_) => 3,
-            SpendPolicy::Hash(_) => 4,
-            SpendPolicy::Threshold(_, _) => 5,
-            SpendPolicy::Opaque(_) => 6,
+            SpendPolicy::Above(_) => POLICY_ABOVE_PREFIX,
+            SpendPolicy::After(_) => POLICY_AFTER_PREFIX,
+            SpendPolicy::PublicKey(_) => POLICY_PUBLIC_KEY_PREFIX,
+            SpendPolicy::Hash(_) => POLICY_HASH_PREFIX,
+            SpendPolicy::Threshold(_, _) => POLICY_THRESHOLD_PREFIX,
+            SpendPolicy::Opaque(_) => POLICY_OPAQUE_PREFIX,
             #[allow(deprecated)]
-            SpendPolicy::UnlockConditions(_) => 7,
+            SpendPolicy::UnlockConditions(_) => POLICY_UNLOCK_CONDITIONS_PREFIX,
         }
     }
 
     fn type_str(&self) -> &str {
         match self {
-            SpendPolicy::Above(_) => "above",
-            SpendPolicy::After(_) => "after",
-            SpendPolicy::PublicKey(_) => "pk",
-            SpendPolicy::Hash(_) => "h",
-            SpendPolicy::Threshold(_, _) => "thresh",
-            SpendPolicy::Opaque(_) => "opaque",
+            SpendPolicy::Above(_) => POLICY_ABOVE_STR,
+            SpendPolicy::After(_) => POLICY_AFTER_STR,
+            SpendPolicy::PublicKey(_) => POLICY_PUBLIC_KEY_STR,
+            SpendPolicy::Hash(_) => POLICY_HASH_STR,
+            SpendPolicy::Threshold(_, _) => POLICY_THRESHOLD_STR,
+            SpendPolicy::Opaque(_) => POLICY_OPAQUE_STR,
             #[allow(deprecated)]
-            SpendPolicy::UnlockConditions(_) => "uc",
+            SpendPolicy::UnlockConditions(_) => POLICY_UNLOCK_CONDITIONS_STR,
         }
     }
 
@@ -154,7 +172,7 @@ impl<'de> Deserialize<'de> for SpendPolicy {
     where
         D: serde::Deserializer<'de>,
     {
-		// helper to recursively deserialize a policy in binary format
+        // helper to recursively deserialize a policy in binary format
         fn deserialize_policy<'de, V>(seq: &mut V) -> Result<SpendPolicy, V::Error>
         where
             V: SeqAccess<'de>,
@@ -163,13 +181,13 @@ impl<'de> Deserialize<'de> for SpendPolicy {
                 .next_element()?
                 .ok_or_else(|| de::Error::custom("missing type prefix"))?;
             match type_prefix {
-                1 => {
+                POLICY_ABOVE_PREFIX => {
                     let height = seq
                         .next_element()?
                         .ok_or_else(|| de::Error::custom("missing height"))?;
                     Ok(SpendPolicy::Above(height))
                 }
-                2 => {
+                POLICY_AFTER_PREFIX => {
                     let timestamp: u64 = seq
                         .next_element()?
                         .ok_or_else(|| de::Error::custom("missing timestamp"))?;
@@ -177,19 +195,19 @@ impl<'de> Deserialize<'de> for SpendPolicy {
                         Utc.timestamp_opt(timestamp as i64, 0).unwrap(),
                     ))
                 }
-                3 => {
+                POLICY_PUBLIC_KEY_PREFIX => {
                     let key: [u8; 32] = seq
                         .next_element()?
                         .ok_or_else(|| de::Error::custom("missing key"))?;
                     Ok(SpendPolicy::PublicKey(PublicKey::new(key)))
                 }
-                4 => {
+                POLICY_HASH_PREFIX => {
                     let hash = seq
                         .next_element()?
                         .ok_or_else(|| de::Error::custom("missing hash"))?;
                     Ok(SpendPolicy::Hash(hash))
                 }
-                5 => {
+                POLICY_THRESHOLD_PREFIX => {
                     let prefix: [u8; 2] = seq
                         .next_element()?
                         .ok_or_else(|| de::Error::custom("missing threshold prefix"))?;
@@ -201,13 +219,14 @@ impl<'de> Deserialize<'de> for SpendPolicy {
                     }
                     Ok(SpendPolicy::Threshold(n, policies))
                 }
-                6 => {
+                POLICY_OPAQUE_PREFIX => {
                     let addr = seq
                         .next_element()?
                         .ok_or_else(|| de::Error::custom("missing address"))?;
                     Ok(SpendPolicy::Opaque(addr))
                 }
-                7 => {
+                #[allow(deprecated)]
+                POLICY_UNLOCK_CONDITIONS_PREFIX => {
                     #[allow(deprecated)]
                     let uc = seq
                         .next_element()?
@@ -268,29 +287,29 @@ impl<'de> Deserialize<'de> for SpendPolicy {
                     policy_value.ok_or_else(|| de::Error::missing_field("policy"))?;
 
                 match policy_type.as_str() {
-                    "above" => {
+                    POLICY_ABOVE_STR => {
                         let height =
                             serde_json::from_value(policy_value).map_err(de::Error::custom)?;
                         Ok(SpendPolicy::Above(height))
                     }
-                    "after" => {
+                    POLICY_AFTER_STR => {
                         let timestamp: u64 =
                             serde_json::from_value(policy_value).map_err(de::Error::custom)?;
                         Ok(SpendPolicy::After(
                             Utc.timestamp_opt(timestamp as i64, 0).unwrap(),
                         ))
                     }
-                    "pk" => {
+                    POLICY_PUBLIC_KEY_STR => {
                         let pk: PublicKey =
                             serde_json::from_value(policy_value).map_err(de::Error::custom)?;
                         Ok(SpendPolicy::PublicKey(pk))
                     }
-                    "h" => {
+                    POLICY_HASH_STR => {
                         let hash: Hash256 =
                             serde_json::from_value(policy_value).map_err(de::Error::custom)?;
                         Ok(SpendPolicy::Hash(hash))
                     }
-                    "thresh" => {
+                    POLICY_THRESHOLD_STR => {
                         #[derive(Deserialize)]
                         struct ThreshPolicy {
                             n: u8,
@@ -300,12 +319,13 @@ impl<'de> Deserialize<'de> for SpendPolicy {
                             serde_json::from_value(policy_value).map_err(de::Error::custom)?;
                         Ok(SpendPolicy::Threshold(thresh.n, thresh.of))
                     }
-                    "opaque" => {
+                    POLICY_OPAQUE_STR => {
                         let addr: Address =
                             serde_json::from_value(policy_value).map_err(de::Error::custom)?;
                         Ok(SpendPolicy::Opaque(addr))
                     }
-                    "uc" => {
+                    #[allow(deprecated)]
+                    POLICY_UNLOCK_CONDITIONS_STR => {
                         #[allow(deprecated)]
                         let uc: UnlockConditions =
                             serde_json::from_value(policy_value).map_err(de::Error::custom)?;
@@ -314,7 +334,16 @@ impl<'de> Deserialize<'de> for SpendPolicy {
                     }
                     _ => Err(de::Error::unknown_variant(
                         &policy_type,
-                        &["above", "after", "pk", "h", "thresh", "opaque", "uc"],
+                        #[allow(deprecated)]
+                        &[
+                            POLICY_ABOVE_STR,
+                            POLICY_AFTER_STR,
+                            POLICY_PUBLIC_KEY_STR,
+                            POLICY_HASH_STR,
+                            POLICY_THRESHOLD_STR,
+                            POLICY_OPAQUE_STR,
+                            POLICY_UNLOCK_CONDITIONS_STR,
+                        ],
                     )),
                 }
             }
