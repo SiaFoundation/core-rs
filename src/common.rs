@@ -105,11 +105,6 @@ macro_rules! ImplHashID {
         impl $name {
             // Example method that might be used in serialization/deserialization
             pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-                let s = match s.split_once(':') {
-                    Some((_prefix, suffix)) => suffix,
-                    None => s,
-                };
-
                 if s.len() != 64 {
                     return Err(HexParseError::InvalidLength);
                 }
@@ -217,11 +212,6 @@ impl Address {
     }
 
     pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-        let s = match s.split_once(':') {
-            Some((_prefix, suffix)) => suffix,
-            None => s,
-        };
-
         if s.len() != 76 {
             return Err(HexParseError::InvalidLength);
         }

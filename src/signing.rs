@@ -165,11 +165,6 @@ impl Signature {
     }
 
     pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-        let s = match s.split_once(':') {
-            Some((_prefix, suffix)) => suffix,
-            None => s,
-        };
-
         let data = hex::decode(s).map_err(HexParseError::HexError)?;
         if data.len() != 64 {
             return Err(HexParseError::InvalidLength);

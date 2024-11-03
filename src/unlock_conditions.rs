@@ -10,13 +10,15 @@ use core::fmt;
 use serde::de::Error;
 use serde::{Deserialize, Serialize};
 
+pub const ALGORITHM_ED25519: Specifier = specifier!["ed25519"];
+
 /// A generic public key that can be used to spend a utxo or revise a file
 ///  contract
 ///
 /// Currently only supports ed25519 keys
 #[derive(Debug, PartialEq, Clone)]
 pub struct UnlockKey {
-    pub algorithm: Algorithm,
+    pub algorithm: Specifier,
     pub key: Vec<u8>,
 }
 
@@ -25,7 +27,7 @@ impl Serialize for UnlockKey {
         if serializer.is_human_readable() {
             String::serialize(&self.to_string(), serializer)
         } else {
-            <(Algorithm, &[u8])>::serialize(&(self.algorithm, self.key.as_ref()), serializer)
+            <(Specifier, &[u8])>::serialize(&(self.algorithm, self.key.as_ref()), serializer)
         }
     }
 }
@@ -39,7 +41,7 @@ impl<'de> Deserialize<'de> for UnlockKey {
             let s = String::deserialize(deserializer)?;
             UnlockKey::parse_string(&s).map_err(|e| Error::custom(format!("{:?}", e)))
         } else {
-            let (algorithm, key) = <(Algorithm, Vec<u8>)>::deserialize(deserializer)?;
+            let (algorithm, key) = <(Specifier, Vec<u8>)>::deserialize(deserializer)?;
             Ok(Self { algorithm, key })
         }
     }
@@ -51,80 +53,14 @@ impl fmt::Display for UnlockKey {
     }
 }
 
-/// An enum representing algorithms supported for signing and verifying
-/// a v1 unlock key
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub struct Algorithm(Specifier);
-
-impl Algorithm {
-    const ED25519_SPECIFIER: Specifier = specifier!("ed25519");
-
-    /// Returns the corresponding Specifier for the Algorithm
-    pub fn as_specifier(&self) -> Specifier {
-        self.0
-    }
-
-    pub fn ed25519() -> Algorithm {
-        Algorithm(Self::ED25519_SPECIFIER)
-    }
-}
-
-impl fmt::Display for Algorithm {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.as_specifier().fmt(f)
-    }
-}
-
-impl Serialize for Algorithm {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let spec: Specifier = self.as_specifier();
-        if serializer.is_human_readable() {
-            String::serialize(&self.to_string(), serializer)
-        } else {
-            spec.serialize(serializer)
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Algorithm {
-    fn deserialize<D>(deserializer: D) -> Result<Algorithm, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        if deserializer.is_human_readable() {
-            let s = String::deserialize(deserializer)?;
-            match s.as_str() {
-                "ed25519" => Ok(Algorithm::ed25519()),
-                _ => Err(Error::custom("Invalid algorithm")),
-            }
-        } else {
-            let spec = Specifier::deserialize(deserializer)?;
-            match spec {
-                Self::ED25519_SPECIFIER => Ok(Algorithm::ed25519()),
-                _ => Err(Error::custom("Invalid algorithm")),
-            }
-        }
-    }
-}
-
 impl UnlockKey {
     /// Parses an UnlockKey from a string
     /// The string should be in the format "algorithm:public_key"
     pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
         let (prefix, key_str) = s.split_once(':').ok_or(HexParseError::MissingPrefix)?;
-        let algorithm = match prefix {
-            "ed25519" => Algorithm::ed25519(),
-            _ => return Err(HexParseError::InvalidPrefix),
-        };
-
-        let mut data = [0u8; 32];
-        hex::decode_to_slice(key_str, &mut data).map_err(HexParseError::HexError)?;
         Ok(UnlockKey {
-            algorithm,
-            key: data.to_vec(),
+            algorithm: Specifier::from(prefix),
+            key: hex::decode(key_str).map_err(HexParseError::HexError)?,
         })
     }
 }
@@ -132,7 +68,7 @@ impl UnlockKey {
 impl From<PublicKey> for UnlockKey {
     fn from(val: PublicKey) -> Self {
         UnlockKey {
-            algorithm: Algorithm::ed25519(),
+            algorithm: ALGORITHM_ED25519,
             key: val.as_ref().to_vec(),
         }
     }
@@ -213,24 +149,6 @@ mod tests {
     use super::*;
     use crate::encoding::{from_reader, to_bytes};
     use crate::seed::Seed;
-
-    #[test]
-    fn test_sia_serialize_algorithm() {
-        let algorithm = Algorithm::ed25519();
-        let bytes = to_bytes(&algorithm).unwrap();
-        let expected: [u8; 16] = [
-            b'e', b'd', b'2', b'5', b'5', b'1', b'9', 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        ];
-        assert_eq!(bytes, expected);
-    }
-
-    #[test]
-    fn test_json_serialize_algorithm() {
-        assert_eq!(
-            serde_json::to_string(&Algorithm::ed25519()).unwrap(),
-            "\"ed25519\""
-        )
-    }
 
     #[test]
     fn test_serialize_unlock_key() {
