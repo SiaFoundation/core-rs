@@ -1,14 +1,14 @@
-use chrono::{DateTime, Utc};
-use serde_json::json;
 use crate::encoding::to_writer;
 use crate::signing::{PublicKey, Signature};
 #[allow(deprecated)]
 use crate::unlock_conditions::UnlockConditions;
 use crate::{Address, Hash256};
 use blake2b_simd::Params;
+use chrono::{DateTime, Utc};
 use core::fmt;
-use serde::ser::{SerializeTuple, SerializeStruct};
+use serde::ser::{SerializeStruct, SerializeTuple};
 use serde::Serialize;
+use serde_json::json;
 use thiserror::Error;
 
 #[derive(Debug, PartialEq, Error)]
@@ -69,18 +69,18 @@ impl SpendPolicy {
         }
     }
 
-	fn type_str(&self) -> &str {
-		match self {
-			SpendPolicy::Above(_) => "above",
-			SpendPolicy::After(_) => "after",
-			SpendPolicy::PublicKey(_) => "pk",
-			SpendPolicy::Hash(_) => "h",
-			SpendPolicy::Threshold(_, _) => "thresh",
-			SpendPolicy::Opaque(_) => "opaque",
-			#[allow(deprecated)]
-			SpendPolicy::UnlockConditions(_) => "uc",
-		}
-	}
+    fn type_str(&self) -> &str {
+        match self {
+            SpendPolicy::Above(_) => "above",
+            SpendPolicy::After(_) => "after",
+            SpendPolicy::PublicKey(_) => "pk",
+            SpendPolicy::Hash(_) => "h",
+            SpendPolicy::Threshold(_, _) => "thresh",
+            SpendPolicy::Opaque(_) => "opaque",
+            #[allow(deprecated)]
+            SpendPolicy::UnlockConditions(_) => "uc",
+        }
+    }
 
     /// Create a policy that is only valid after a certain block height
     pub fn above(height: u64) -> Self {
@@ -151,11 +151,11 @@ impl SpendPolicy {
     /// threshold policies. The version byte is only written for the top-level
     /// policy.
     fn serialize_policy<S: serde::ser::SerializeTuple>(&self, s: &mut S) -> Result<(), S::Error> {
-		s.serialize_element(&self.type_prefix())?; // type prefix
+        s.serialize_element(&self.type_prefix())?; // type prefix
         match self {
             SpendPolicy::Above(height) => s.serialize_element(height),
             SpendPolicy::After(time) => {
-				let ts = time.timestamp() as u64;
+                let ts = time.timestamp() as u64;
                 s.serialize_element(&ts)
             }
             SpendPolicy::PublicKey(pk) => {
@@ -181,21 +181,21 @@ impl SpendPolicy {
 
 impl Serialize for SpendPolicy {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-		if !serializer.is_human_readable() {
-			let mut s = serializer.serialize_tuple(0)?;
-			s.serialize_element(&1u8)?; // version
-			self.serialize_policy(&mut s)?;
-			return s.end();
-		}
-		
-		let mut state = serializer.serialize_struct("SpendPolicy", 2)?;
-		state.serialize_field("type", self.type_str())?;
+        if !serializer.is_human_readable() {
+            let mut s = serializer.serialize_tuple(0)?;
+            s.serialize_element(&1u8)?; // version
+            self.serialize_policy(&mut s)?;
+            return s.end();
+        }
+
+        let mut state = serializer.serialize_struct("SpendPolicy", 2)?;
+        state.serialize_field("type", self.type_str())?;
         match self {
             SpendPolicy::Above(height) => {
                 state.serialize_field("policy", height)?;
             }
             SpendPolicy::After(time) => {
-				let ts = time.timestamp() as u64;
+                let ts = time.timestamp() as u64;
                 state.serialize_field("policy", &ts)?;
             }
             SpendPolicy::PublicKey(pk) => {
@@ -205,21 +205,24 @@ impl Serialize for SpendPolicy {
                 state.serialize_field("policy", &hash)?;
             }
             SpendPolicy::Threshold(n, policies) => {
-				state.serialize_field("policy", &json!({
-					"n": n,
-					"of": policies,
-				}))?;
-			}
-			SpendPolicy::Opaque(addr) => {
-				state.serialize_field("policy", addr)?;
-			}
-			#[allow(deprecated)]
-			SpendPolicy::UnlockConditions(uc) => {
-				state.serialize_field("policy", uc)?;
-			}
-		}
-		state.end()
-	}
+                state.serialize_field(
+                    "policy",
+                    &json!({
+                        "n": n,
+                        "of": policies,
+                    }),
+                )?;
+            }
+            SpendPolicy::Opaque(addr) => {
+                state.serialize_field("policy", addr)?;
+            }
+            #[allow(deprecated)]
+            SpendPolicy::UnlockConditions(uc) => {
+                state.serialize_field("policy", uc)?;
+            }
+        }
+        state.end()
+    }
 }
 
 impl fmt::Display for SpendPolicy {
@@ -277,8 +280,8 @@ impl SatisfiedPolicy {
 
 #[cfg(test)]
 mod tests {
-    use chrono::TimeZone;
     use super::*;
+    use chrono::TimeZone;
 
     #[test]
     fn test_address() {
@@ -395,9 +398,9 @@ mod tests {
         }
     }
 
-	#[test]
-	fn test_policy_json() {
-		let test_cases = vec![
+    #[test]
+    fn test_policy_json() {
+        let test_cases = vec![
             (SpendPolicy::above(100), "{\"type\":\"above\",\"policy\":100}"),
             ( SpendPolicy::after(Utc.timestamp_opt(100, 0).unwrap()), "{\"type\":\"after\",\"policy\":100}"),
             ( SpendPolicy::public_key(PublicKey::new([1; 32])), "{\"type\":\"pk\",\"policy\":\"ed25519:0101010101010101010101010101010101010101010101010101010101010101\"}"),
@@ -444,9 +447,9 @@ mod tests {
 			)
         ];
 
-		for (policy, expected) in test_cases {
-			let json = serde_json::to_string(&policy).unwrap();
-			assert_eq!(json, expected);
-		}
-	}
+        for (policy, expected) in test_cases {
+            let json = serde_json::to_string(&policy).unwrap();
+            assert_eq!(json, expected);
+        }
+    }
 }
