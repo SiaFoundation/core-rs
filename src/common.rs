@@ -308,10 +308,7 @@ mod tests {
         // json
         let addr_serialized = serde_json::to_string(&address).unwrap();
         let addr_deserialized: Address = serde_json::from_str(&addr_serialized).unwrap();
-        assert_eq!(
-            addr_serialized,
-            format!("\"{0}{1}\"", addr_str, checksum)
-        ); // serialize
+        assert_eq!(addr_serialized, format!("\"{0}{1}\"", addr_str, checksum)); // serialize
         assert_eq!(addr_deserialized, address); // deserialize
     }
 }

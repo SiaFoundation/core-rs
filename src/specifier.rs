@@ -18,14 +18,14 @@ impl Specifier {
 }
 
 impl From<&str> for Specifier {
-	fn from(s: &str) -> Self {
-		let mut buf = [0; SPECIFIER_SIZE];
-		let src = s.as_bytes();
-		let len = src.len();
-		let index = len.min(SPECIFIER_SIZE);
-		buf[..index].copy_from_slice(&src[..index]);
-		Self(buf)
-	}
+    fn from(s: &str) -> Self {
+        let mut buf = [0; SPECIFIER_SIZE];
+        let src = s.as_bytes();
+        let len = src.len();
+        let index = len.min(SPECIFIER_SIZE);
+        buf[..index].copy_from_slice(&src[..index]);
+        Self(buf)
+    }
 }
 
 impl fmt::Display for Specifier {

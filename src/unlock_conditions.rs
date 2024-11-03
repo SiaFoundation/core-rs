@@ -372,20 +372,98 @@ mod tests {
         const PHRASE: &str =
             "song renew capable taxi follow sword more hybrid laptop dance unfair poem";
         let test_addresses = vec![
-			(0, Address::parse_string("16e09f8dc8a100a03ba1f9503e4035661738d1bea0b6cdc9bb012d3cd25edaacfd780909e550").unwrap()),
-			(1, Address::parse_string("cb016a7018485325fa299bc247113e3792dbea27ee08d2bb57a16cb0804fa449d3a91ee647a1").unwrap()),
-			(2, Address::parse_string("5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34").unwrap()),
-			(3, Address::parse_string("c3bc7bc1431460ed2556874cb63714760120125da758ebbd78198534cb3d25774352fdbb3e8b").unwrap()),
-			(4, Address::parse_string("ebc7eae02ecf76e3ba7312bab6b6f71e9d255801a3a3b83f7cc26bd520b2c27a511cd8604e4b").unwrap()),
-			(5, Address::parse_string("fce241a44b944b10f414782dd35f5d96b92aec3d6da92a45ae44b7dc8cfb4b4ba97a34ce7032").unwrap()),
-			(6, Address::parse_string("36d253e7c3af2213eccaf0a61c6d24be8668f72af6e773463f3c41efc8bb70f2b353b90de9dd").unwrap()),
-			(7, Address::parse_string("c8f85375fb264428c86594863440f856db1da4614d75f4a30e3d9db3dfc88af6995128c6a845").unwrap()),
-			(8, Address::parse_string("85ef2ba14ee464060570b16bddaac91353961e7545067ccdf868a0ece305f00d2c08ec6844c6").unwrap()),
-			(9, Address::parse_string("9dcf644245eba91e7ea70c47ccadf479e6834c1c1221335e7246e0a6bc40e18362c4faa760b8").unwrap()),
-			(4294967295, Address::parse_string("a906891f0c524fd272a905aa5dd7018c69e5d68222385cbd9d5292f38f021ce4bf00953a0659").unwrap()),
-			(4294967296, Address::parse_string("b6ab338e624a304add7afe205361ac71821b87559a3b9c5b3735eaafa914eed533613a0af7fa").unwrap()),
-			(18446744073709551615, Address::parse_string("832d0e8b5f967677d812d75559c373d930ad16eb90c31c29982a190bb7db9edf9438fd827938").unwrap()),
-		];
+            (
+                0,
+                Address::parse_string(
+                    "16e09f8dc8a100a03ba1f9503e4035661738d1bea0b6cdc9bb012d3cd25edaacfd780909e550",
+                )
+                .unwrap(),
+            ),
+            (
+                1,
+                Address::parse_string(
+                    "cb016a7018485325fa299bc247113e3792dbea27ee08d2bb57a16cb0804fa449d3a91ee647a1",
+                )
+                .unwrap(),
+            ),
+            (
+                2,
+                Address::parse_string(
+                    "5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34",
+                )
+                .unwrap(),
+            ),
+            (
+                3,
+                Address::parse_string(
+                    "c3bc7bc1431460ed2556874cb63714760120125da758ebbd78198534cb3d25774352fdbb3e8b",
+                )
+                .unwrap(),
+            ),
+            (
+                4,
+                Address::parse_string(
+                    "ebc7eae02ecf76e3ba7312bab6b6f71e9d255801a3a3b83f7cc26bd520b2c27a511cd8604e4b",
+                )
+                .unwrap(),
+            ),
+            (
+                5,
+                Address::parse_string(
+                    "fce241a44b944b10f414782dd35f5d96b92aec3d6da92a45ae44b7dc8cfb4b4ba97a34ce7032",
+                )
+                .unwrap(),
+            ),
+            (
+                6,
+                Address::parse_string(
+                    "36d253e7c3af2213eccaf0a61c6d24be8668f72af6e773463f3c41efc8bb70f2b353b90de9dd",
+                )
+                .unwrap(),
+            ),
+            (
+                7,
+                Address::parse_string(
+                    "c8f85375fb264428c86594863440f856db1da4614d75f4a30e3d9db3dfc88af6995128c6a845",
+                )
+                .unwrap(),
+            ),
+            (
+                8,
+                Address::parse_string(
+                    "85ef2ba14ee464060570b16bddaac91353961e7545067ccdf868a0ece305f00d2c08ec6844c6",
+                )
+                .unwrap(),
+            ),
+            (
+                9,
+                Address::parse_string(
+                    "9dcf644245eba91e7ea70c47ccadf479e6834c1c1221335e7246e0a6bc40e18362c4faa760b8",
+                )
+                .unwrap(),
+            ),
+            (
+                4294967295,
+                Address::parse_string(
+                    "a906891f0c524fd272a905aa5dd7018c69e5d68222385cbd9d5292f38f021ce4bf00953a0659",
+                )
+                .unwrap(),
+            ),
+            (
+                4294967296,
+                Address::parse_string(
+                    "b6ab338e624a304add7afe205361ac71821b87559a3b9c5b3735eaafa914eed533613a0af7fa",
+                )
+                .unwrap(),
+            ),
+            (
+                18446744073709551615,
+                Address::parse_string(
+                    "832d0e8b5f967677d812d75559c373d930ad16eb90c31c29982a190bb7db9edf9438fd827938",
+                )
+                .unwrap(),
+            ),
+        ];
 
         let seed = Seed::from_mnemonic(PHRASE).unwrap();
         for (i, expected) in test_addresses {
