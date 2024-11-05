@@ -729,7 +729,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sia_core"
+name = "sia"
 version = "0.0.1"
 dependencies = [
  "base64",
@@ -744,8 +744,18 @@ dependencies = [
  "serde-big-array",
  "serde_json",
  "sha2",
+ "sia-derive",
  "thiserror",
  "time",
+]
+
+[[package]]
+name = "sia-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

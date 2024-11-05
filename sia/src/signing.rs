@@ -1,13 +1,14 @@
 use core::fmt;
 use std::time::SystemTime;
 
+use crate::encoding::{SiaDecodable, SiaDecode, SiaEncodable, SiaEncode};
 use crate::{ChainIndex, Hash256, HexParseError};
 use base64::prelude::*;
 use ed25519_dalek::{Signature as ED25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{de::Error, Deserialize, Serialize};
 
 /// An ed25519 public key that can be used to verify a signature
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, SiaEncode, SiaDecode)]
 pub struct PublicKey([u8; 32]);
 
 impl PublicKey {
@@ -16,14 +17,10 @@ impl PublicKey {
 
 impl Serialize for PublicKey {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            String::serialize(
-                &format!("{}{}", Self::PREFIX, &self.to_string()),
-                serializer,
-            )
-        } else {
-            <[u8; 32]>::serialize(&self.0, serializer)
-        }
+        String::serialize(
+            &format!("{}{}", Self::PREFIX, &self.to_string()),
+            serializer,
+        )
     }
 }
 
@@ -32,18 +29,14 @@ impl<'de> Deserialize<'de> for PublicKey {
     where
         D: serde::Deserializer<'de>,
     {
-        if deserializer.is_human_readable() {
-            let s = String::deserialize(deserializer)?;
-            let s = s.strip_prefix(Self::PREFIX).ok_or(Error::custom(format!(
-                "key must have prefix '{}'",
-                Self::PREFIX
-            )))?;
-            let mut pk = [0; 32];
-            hex::decode_to_slice(s, &mut pk).map_err(|e| Error::custom(format!("{:?}", e)))?;
-            Ok(Self::new(pk))
-        } else {
-            Ok(PublicKey(<[u8; 32]>::deserialize(deserializer)?))
-        }
+        let s = String::deserialize(deserializer)?;
+        let s = s.strip_prefix(Self::PREFIX).ok_or(Error::custom(format!(
+            "key must have prefix '{}'",
+            Self::PREFIX
+        )))?;
+        let mut pk = [0; 32];
+        hex::decode_to_slice(s, &mut pk).map_err(|e| Error::custom(format!("{:?}", e)))?;
+        Ok(Self::new(pk))
     }
 }
 
@@ -118,7 +111,7 @@ impl Drop for PrivateKey {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, SiaEncode, SiaDecode)]
 pub struct Signature([u8; 64]);
 
 impl Serialize for Signature {
@@ -190,9 +183,10 @@ impl AsRef<[u8; 64]> for Signature {
 
 impl fmt::Display for Signature {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "sig:{}", hex::encode(self.0))
+        write!(f, "{}", hex::encode(self.0))
     }
 }
+
 #[derive(Default, Debug)]
 pub struct NetworkHardforks {
     pub asic_height: u64,
@@ -239,7 +233,6 @@ mod tests {
     use std::vec;
 
     use crate::{
-        encoding::{from_reader, to_bytes},
         transactions::{
             CoveredFields, FileContract, FileContractID, FileContractRevision, SiacoinInput,
             SiacoinOutput, SiafundInput, SiafundOutput, StorageProof, Transaction,
@@ -257,10 +250,11 @@ mod tests {
         let public_key = PublicKey::new(hex::decode(public_key_str).unwrap().try_into().unwrap());
 
         // binary
-        let public_key_serialized = to_bytes(&public_key).unwrap();
-        let public_key_deserialized: PublicKey =
-            from_reader(&mut &public_key_serialized[..]).unwrap();
+        let mut public_key_serialized = Vec::new();
+        public_key.encode(&mut public_key_serialized).unwrap();
         assert_eq!(public_key_serialized, hex::decode(public_key_str).unwrap());
+        let public_key_deserialized =
+            PublicKey::decode(&mut public_key_serialized.as_slice()).unwrap();
         assert_eq!(public_key_deserialized, public_key);
 
         // json
@@ -506,7 +500,8 @@ mod tests {
             let signature = unsigned_transaction
                 .sign(&state, &covered_fields, Hash256::default(), 1, 100, &key)
                 .unwrap();
-            assert_eq!(signature.signature, tc.signature);
+            let sig = Signature::new(signature.signature.clone().try_into().unwrap());
+            assert_eq!(sig, tc.signature);
 
             // manually build the sig_hash and check the signature
             let sig_hash = if tc.whole_transaction {
@@ -518,9 +513,8 @@ mod tests {
                     .partial_sig_hash(&state, &covered_fields)
                     .unwrap()
             };
-            assert!(key
-                .public_key()
-                .verify(sig_hash.as_ref(), &signature.signature));
+            let sig = Signature::new(signature.signature.try_into().unwrap());
+            assert!(key.public_key().verify(sig_hash.as_ref(), &sig));
         }
     }
 }

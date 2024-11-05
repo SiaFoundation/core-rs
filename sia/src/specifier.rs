@@ -1,10 +1,24 @@
+use crate::encoding::{
+    SiaDecodable, SiaDecode, SiaEncodable, SiaEncode, V1SiaDecodable, V1SiaDecode, V1SiaEncodable,
+    V1SiaEncode,
+};
 use core::{fmt, str};
-
 use serde::{Deserialize, Serialize};
 
 pub const SPECIFIER_SIZE: usize = 16;
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    SiaEncode,
+    V1SiaEncode,
+    V1SiaDecode,
+    SiaDecode,
+)]
 pub struct Specifier([u8; SPECIFIER_SIZE]);
 
 impl Specifier {
@@ -59,7 +73,6 @@ macro_rules! specifier {
         $crate::specifier::Specifier::new(buf)
     }};
 }
-
 pub(crate) use specifier;
 
 #[cfg(test)]

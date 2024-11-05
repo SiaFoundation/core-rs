@@ -1,8 +1,13 @@
+use crate::encoding::{
+    SiaDecodable, SiaDecode, SiaEncodable, SiaEncode, V1SiaDecodable, V1SiaDecode, V1SiaEncodable,
+    V1SiaEncode,
+};
 use blake2b_simd::Params;
 use core::fmt;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
+#[derive(Debug, PartialEq, SiaEncode)]
 pub struct ChainIndex {
     pub height: u64,
     pub id: [u8; 32],
@@ -14,7 +19,7 @@ impl fmt::Display for ChainIndex {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, SiaEncode, V1SiaEncode, SiaDecode, V1SiaDecode)]
 pub struct Leaf([u8; 64]);
 
 impl From<[u8; 64]> for Leaf {
@@ -31,16 +36,7 @@ impl fmt::Display for Leaf {
 
 impl Serialize for Leaf {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            String::serialize(&self.to_string(), serializer)
-        } else {
-            #[derive(Serialize)]
-            struct BinaryLeaf {
-                #[serde(with = "serde_big_array::BigArray")]
-                data: [u8; 64],
-            }
-            BinaryLeaf { data: self.0 }.serialize(serializer)
-        }
+        String::serialize(&self.to_string(), serializer)
     }
 }
 
@@ -49,119 +45,99 @@ impl<'de> Deserialize<'de> for Leaf {
     where
         D: serde::Deserializer<'de>,
     {
-        if deserializer.is_human_readable() {
-            let s = String::deserialize(deserializer)?;
-            let data = hex::decode(s).map_err(|e| serde::de::Error::custom(format!("{:?}", e)))?;
-            if data.len() != 64 {
-                return Err(serde::de::Error::custom("invalid length"));
-            }
-            Ok(Leaf(data.try_into().unwrap()))
+        let s = String::deserialize(deserializer)?;
+        let data = hex::decode(s).map_err(|e| serde::de::Error::custom(format!("{:?}", e)))?;
+        if data.len() != 64 {
+            return Err(serde::de::Error::custom("invalid length"));
+        }
+        Ok(Leaf(data.try_into().unwrap()))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, SiaEncode, V1SiaEncode, SiaDecode, V1SiaDecode)]
+pub struct Hash256([u8; 32]);
+
+impl serde::Serialize for Hash256 {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            String::serialize(&self.to_string(), serializer)
         } else {
-            #[derive(Deserialize)]
-            struct BinaryLeaf {
-                #[serde(with = "serde_big_array::BigArray")]
-                data: [u8; 64],
-            }
-            let leaf = BinaryLeaf::deserialize(deserializer)?;
-            Ok(Leaf(leaf.data))
+            <[u8; 32]>::serialize(&self.0, serializer)
         }
     }
 }
 
-// Macro to implement types used as identifiers which are 32 byte hashes and are
-// serialized with a prefix
-#[macro_export]
-macro_rules! ImplHashID {
-    ($name:ident) => {
-        #[derive(Debug, Clone, Copy, PartialEq)]
-        pub struct $name([u8; 32]);
-
-        impl serde::Serialize for $name {
-            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-                if serializer.is_human_readable() {
-                    String::serialize(&self.to_string(), serializer)
-                } else {
-                    <[u8; 32]>::serialize(&self.0, serializer)
-                }
-            }
+impl<'de> serde::Deserialize<'de> for Hash256 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            Hash256::parse_string(&s).map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
+        } else {
+            let data = <[u8; 32]>::deserialize(deserializer)?;
+            Ok(Hash256(data))
         }
-
-        impl<'de> serde::Deserialize<'de> for $name {
-            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-            where
-                D: serde::Deserializer<'de>,
-            {
-                if deserializer.is_human_readable() {
-                    let s = String::deserialize(deserializer)?;
-                    $name::parse_string(&s)
-                        .map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
-                } else {
-                    let data = <[u8; 32]>::deserialize(deserializer)?;
-                    Ok($name(data))
-                }
-            }
-        }
-
-        impl $name {
-            // Example method that might be used in serialization/deserialization
-            pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
-                if s.len() != 64 {
-                    return Err(HexParseError::InvalidLength);
-                }
-
-                let mut data = [0u8; 32];
-                hex::decode_to_slice(s, &mut data).map_err(HexParseError::HexError)?;
-                Ok($name(data))
-            }
-        }
-
-        impl fmt::Display for $name {
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "{}", hex::encode(self.0))
-            }
-        }
-
-        impl From<blake2b_simd::Hash> for $name {
-            fn from(hash: blake2b_simd::Hash) -> Self {
-                let mut h = [0; 32];
-                h.copy_from_slice(&hash.as_bytes()[..32]);
-                Self(h)
-            }
-        }
-
-        impl From<[u8; 32]> for $name {
-            fn from(data: [u8; 32]) -> Self {
-                $name(data)
-            }
-        }
-
-        impl From<$name> for [u8; 32] {
-            fn from(hash: $name) -> [u8; 32] {
-                hash.0
-            }
-        }
-
-        impl AsRef<[u8; 32]> for $name {
-            fn as_ref(&self) -> &[u8; 32] {
-                &self.0
-            }
-        }
-
-        impl AsRef<[u8]> for $name {
-            fn as_ref(&self) -> &[u8] {
-                &self.0
-            }
-        }
-
-        impl Default for $name {
-            fn default() -> Self {
-                $name([0; 32])
-            }
-        }
-    };
+    }
 }
 
-ImplHashID!(Hash256);
+impl Hash256 {
+    // Example method that might be used in serialization/deserialization
+    pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
+        if s.len() != 64 {
+            return Err(HexParseError::InvalidLength);
+        }
+
+        let mut data = [0u8; 32];
+        hex::decode_to_slice(s, &mut data).map_err(HexParseError::HexError)?;
+        Ok(Hash256(data))
+    }
+}
+
+impl fmt::Display for Hash256 {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
+
+impl From<blake2b_simd::Hash> for Hash256 {
+    fn from(hash: blake2b_simd::Hash) -> Self {
+        let mut h = [0; 32];
+        h.copy_from_slice(&hash.as_bytes()[..32]);
+        Self(h)
+    }
+}
+
+impl From<[u8; 32]> for Hash256 {
+    fn from(data: [u8; 32]) -> Self {
+        Hash256(data)
+    }
+}
+
+impl From<Hash256> for [u8; 32] {
+    fn from(hash: Hash256) -> [u8; 32] {
+        hash.0
+    }
+}
+
+impl AsRef<[u8; 32]> for Hash256 {
+    fn as_ref(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
+
+impl AsRef<[u8]> for Hash256 {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl Default for Hash256 {
+    fn default() -> Self {
+        Hash256([0; 32])
+    }
+}
 
 /// encapsulates the various errors that can occur when parsing a Sia object
 /// from a string
@@ -175,7 +151,7 @@ pub enum HexParseError {
 }
 
 /// An address that can be used to receive UTXOs
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, SiaEncode, V1SiaEncode, SiaDecode, V1SiaDecode)]
 pub struct Address([u8; 32]);
 
 impl<'de> Deserialize<'de> for Address {
@@ -183,13 +159,8 @@ impl<'de> Deserialize<'de> for Address {
     where
         D: serde::Deserializer<'de>,
     {
-        if deserializer.is_human_readable() {
-            let s = String::deserialize(deserializer)?;
-            Address::parse_string(&s).map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
-        } else {
-            let data = <[u8; 32]>::deserialize(deserializer)?;
-            Ok(Address(data))
-        }
+        let s = String::deserialize(deserializer)?;
+        Address::parse_string(&s).map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
     }
 }
 
@@ -198,11 +169,7 @@ impl Serialize for Address {
     where
         S: serde::Serializer,
     {
-        if serializer.is_human_readable() {
-            self.to_string().serialize(serializer)
-        } else {
-            self.0.serialize(serializer)
-        }
+        self.to_string().serialize(serializer)
     }
 }
 
@@ -273,7 +240,6 @@ impl fmt::Display for Address {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::encoding::{from_reader, to_bytes};
 
     #[test]
     fn test_serialize_hash256() {
@@ -281,9 +247,10 @@ mod tests {
         let hash = Hash256(hex::decode(hash_str).unwrap().try_into().unwrap());
 
         // binary
-        let hash_serialized = to_bytes(&hash).unwrap();
-        let hash_deserialized: Hash256 = from_reader(&mut &hash_serialized[..]).unwrap();
-        assert_eq!(hash_serialized, hex::decode(hash_str).unwrap()); // serialize
+        let mut hash_serialized: Vec<u8> = Vec::new();
+        hash.encode(&mut hash_serialized).unwrap();
+        assert_eq!(hash_serialized, hex::decode(hash_str).unwrap());
+        let hash_deserialized = Hash256::decode(&mut &hash_serialized[..]).unwrap();
         assert_eq!(hash_deserialized, hash); // deserialize
 
         // json
@@ -300,9 +267,10 @@ mod tests {
         let address = Address(hex::decode(addr_str).unwrap().try_into().unwrap());
 
         // binary
-        let addr_serialized = to_bytes(&address).unwrap();
-        let addr_deserialized: Address = from_reader(&mut &addr_serialized[..]).unwrap();
+        let mut addr_serialized: Vec<u8> = Vec::new();
+        address.encode(&mut addr_serialized).unwrap();
         assert_eq!(addr_serialized, hex::decode(addr_str).unwrap()); // serialize
+        let addr_deserialized = Address::decode(&mut &addr_serialized[..]).unwrap();
         assert_eq!(addr_deserialized, address); // deserialize
 
         // json
