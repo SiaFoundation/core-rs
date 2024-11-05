@@ -254,9 +254,9 @@ impl<'de> Deserialize<'de> for SpendPolicy {
             {
                 let version: u8 = seq
                     .next_element()?
-                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                    .ok_or_else(|| de::Error::custom("missing version"))?;
                 if version != 1 {
-                    return Err(de::Error::custom("invalid version"));
+                    return Err(de::Error::custom(format!("invalid version {:?}", version)));
                 }
 
                 deserialize_policy(&mut seq)
@@ -352,7 +352,7 @@ impl<'de> Deserialize<'de> for SpendPolicy {
         if deserializer.is_human_readable() {
             deserializer.deserialize_map(SpendPolicyVisitor)
         } else {
-            deserializer.deserialize_seq(SpendPolicyVisitor)
+            deserializer.deserialize_tuple(256, SpendPolicyVisitor)
         }
     }
 }
@@ -393,7 +393,7 @@ impl Serialize for SpendPolicy {
 
         if !serializer.is_human_readable() {
             let mut s = serializer.serialize_tuple(0)?;
-            s.serialize_element(&1u8)?; // version
+			s.serialize_element(&1u8)?;
             serialize_policy(self, &mut s)?;
             return s.end();
         }
@@ -435,41 +435,7 @@ impl Serialize for SpendPolicy {
     }
 }
 
-impl fmt::Display for SpendPolicy {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            SpendPolicy::Above(height) => write!(f, "above({})", height),
-            SpendPolicy::After(time) => {
-                write!(f, "after({})", time.unix_timestamp())
-            }
-            SpendPolicy::PublicKey(pk) => write!(f, "pk(0x{})", hex::encode(pk.as_ref())),
-            SpendPolicy::Hash(hash) => write!(f, "h(0x{})", hex::encode(hash)),
-            SpendPolicy::Threshold(n, policies) => {
-                write!(f, "thresh({},[", n)?;
-                for (i, policy) in policies.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ",")?;
-                    }
-                    write!(f, "{}", policy)?;
-                }
-                write!(f, "])")
-            }
-            SpendPolicy::Opaque(addr) => write!(f, "opaque(0x{})", hex::encode(addr)),
-            #[allow(deprecated)]
-            SpendPolicy::UnlockConditions(uc) => {
-                write!(f, "uc({},{},[", uc.timelock, uc.signatures_required)?;
-                for (i, uk) in uc.public_keys.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ",")?;
-                    }
-                    write!(f, "{}", uk)?;
-                }
-                write!(f, "])")
-            }
-        }
-    }
-}
-
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 /// A policy that has been satisfied by a set of preimages and signatures.
 pub struct SatisfiedPolicy {
     pub policy: SpendPolicy,
@@ -490,6 +456,8 @@ impl SatisfiedPolicy {
 
 #[cfg(test)]
 mod tests {
+    use crate::encoding::{from_reader, to_bytes};
+
     use super::*;
 
     #[test]
@@ -610,12 +578,28 @@ mod tests {
     }
 
     #[test]
-    fn test_policy_json() {
+    fn test_policy_encoding() {
         let test_cases = vec![
-            (SpendPolicy::above(100), "{\"type\":\"above\",\"policy\":100}"),
-            ( SpendPolicy::after(OffsetDateTime::from_unix_timestamp(100).unwrap()), "{\"type\":\"after\",\"policy\":100}"),
-            ( SpendPolicy::public_key(PublicKey::new([1; 32])), "{\"type\":\"pk\",\"policy\":\"ed25519:0101010101010101010101010101010101010101010101010101010101010101\"}"),
-            ( SpendPolicy::hash(Hash256::from([0; 32])), "{\"type\":\"h\",\"policy\":\"0000000000000000000000000000000000000000000000000000000000000000\"}"),
+            (
+				SpendPolicy::above(100),
+				"{\"type\":\"above\",\"policy\":100}",
+				"01016400000000000000",
+			),
+            (
+				SpendPolicy::after(OffsetDateTime::from_unix_timestamp(100).unwrap()),
+				"{\"type\":\"after\",\"policy\":100}",
+				"01026400000000000000"
+			),
+            (
+				SpendPolicy::public_key(PublicKey::new([1; 32])),
+				"{\"type\":\"pk\",\"policy\":\"ed25519:0101010101010101010101010101010101010101010101010101010101010101\"}",
+				"01030101010101010101010101010101010101010101010101010101010101010101",
+			),
+            (
+				SpendPolicy::hash(Hash256::from([0; 32])),
+				"{\"type\":\"h\",\"policy\":\"0000000000000000000000000000000000000000000000000000000000000000\"}",
+				"01040000000000000000000000000000000000000000000000000000000000000000",
+			),
             (
 				SpendPolicy::threshold(
 					2,
@@ -625,6 +609,7 @@ mod tests {
 					],
 				),
 				"{\"type\":\"thresh\",\"policy\":{\"n\":2,\"of\":[{\"policy\":\"ed25519:0000000000000000000000000000000000000000000000000000000000000000\",\"type\":\"pk\"},{\"policy\":100,\"type\":\"above\"}]}}",
+				"01050202030000000000000000000000000000000000000000000000000000000000000000016400000000000000",
 			),
             (
 				SpendPolicy::threshold(
@@ -642,7 +627,8 @@ mod tests {
 						SpendPolicy::PublicKey(PublicKey::new([0; 32])),
 					],
 				),
-				"{\"type\":\"thresh\",\"policy\":{\"n\":2,\"of\":[{\"policy\":\"ed25519:0000000000000000000000000000000000000000000000000000000000000000\",\"type\":\"pk\"},{\"policy\":100,\"type\":\"above\"},{\"policy\":{\"n\":2,\"of\":[{\"policy\":\"ed25519:0000000000000000000000000000000000000000000000000000000000000000\",\"type\":\"pk\"},{\"policy\":100,\"type\":\"after\"}]},\"type\":\"thresh\"},{\"policy\":\"ed25519:0000000000000000000000000000000000000000000000000000000000000000\",\"type\":\"pk\"}]}}"
+				"{\"type\":\"thresh\",\"policy\":{\"n\":2,\"of\":[{\"policy\":\"ed25519:0000000000000000000000000000000000000000000000000000000000000000\",\"type\":\"pk\"},{\"policy\":100,\"type\":\"above\"},{\"policy\":{\"n\":2,\"of\":[{\"policy\":\"ed25519:0000000000000000000000000000000000000000000000000000000000000000\",\"type\":\"pk\"},{\"policy\":100,\"type\":\"after\"}]},\"type\":\"thresh\"},{\"policy\":\"ed25519:0000000000000000000000000000000000000000000000000000000000000000\",\"type\":\"pk\"}]}}",
+				"01050204030000000000000000000000000000000000000000000000000000000000000000016400000000000000050202030000000000000000000000000000000000000000000000000000000000000000026400000000000000030000000000000000000000000000000000000000000000000000000000000000",
 			),
 			(
 				#[allow(deprecated)]
@@ -655,15 +641,32 @@ mod tests {
 					],
 				}),
 				"{\"type\":\"uc\",\"policy\":{\"timelock\":100,\"publicKeys\":[\"ed25519:0000000000000000000000000000000000000000000000000000000000000000\",\"ed25519:0101010101010101010101010101010101010101010101010101010101010101\"],\"signaturesRequired\":2}}",
+				"010764000000000000000200000000000000656432353531390000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000065643235353139000000000000000000200000000000000001010101010101010101010101010101010101010101010101010101010101010200000000000000",
 			)
         ];
 
-        for (policy, expected) in test_cases {
-            let json = serde_json::to_string(&policy).unwrap();
-            assert_eq!(json, expected);
+        for (i, (policy, json, binary)) in test_cases.iter().enumerate() {
+            let serialized_json = serde_json::to_string(&policy)
+                .unwrap_or_else(|e| panic!("failed to serialize json in test case {}: {}", i, e));
+            assert_eq!(serialized_json, *json, "test case {}", i);
+            let deserialized_json: SpendPolicy = serde_json::from_str(json)
+                .unwrap_or_else(|e| panic!("failed to deserialize json in test case {}: {}", i, e));
+            assert_eq!(deserialized_json, *policy, "test case {}", i);
 
-            let parsed: SpendPolicy = serde_json::from_str(&json).unwrap();
-            assert_eq!(parsed, policy);
+            let serialized_binary = to_bytes(policy)
+                .unwrap_or_else(|e| panic!("failed to serialize binary in test case {}: {}", i, e));
+            assert_eq!(
+                hex::encode(serialized_binary.clone()),
+                *binary,
+                "test case {}",
+                i
+            );
+
+            let deserialized_binary: SpendPolicy = from_reader(&mut &serialized_binary[..])
+                .unwrap_or_else(|e| {
+                    panic!("failed to deserialize binary in test case {}: {}", i, e)
+                });
+            assert_eq!(deserialized_binary, *policy, "test case {}", i);
         }
     }
 }
