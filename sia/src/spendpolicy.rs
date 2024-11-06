@@ -1,10 +1,12 @@
 use crate::signing::{PublicKey, Signature};
 #[allow(deprecated)]
 use crate::unlock_conditions::UnlockConditions;
+use crate::encoding::{self, SiaEncodable, SiaEncode, SiaDecodable, SiaDecode};
 use crate::{Address, Hash256};
 use core::fmt;
-use serde::de::{self, MapAccess, SeqAccess, Visitor};
-use serde::ser::{SerializeStruct, SerializeTuple};
+use blake2b_simd::Params;
+use serde::de::{self, MapAccess, Visitor};
+use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
@@ -141,7 +143,7 @@ impl SpendPolicy {
     /// Returns the address of the policy. This is a hash of the policy that
     /// can be used to receive funds.
     pub fn address(&self) -> Address {
-        /*#[allow(deprecated)]
+        #[allow(deprecated)]
         if let SpendPolicy::UnlockConditions(uc) = self {
             return uc.address();
         } else if let SpendPolicy::Opaque(addr) = self {
@@ -149,7 +151,6 @@ impl SpendPolicy {
         }
 
         let mut state = Params::new().hash_length(32).to_state();
-
         state.update("sia/address|".as_bytes());
 
         if let SpendPolicy::Threshold(n, of) = self {
@@ -157,12 +158,11 @@ impl SpendPolicy {
             for policy in of {
                 opaque.push(SpendPolicy::Opaque(policy.address()))
             }
-            to_writer(&mut state, &SpendPolicy::Threshold(*n, opaque)).unwrap();
+			SpendPolicy::Threshold(*n, opaque).encode(&mut state).unwrap();
         } else {
-            to_writer(&mut state, self).unwrap();
+            self.encode(&mut state).unwrap();
         }
-        Address::from(state.finalize().as_bytes())*/
-        Address::new([0; 32])
+        Address::from(state.finalize().as_bytes())
     }
 }
 
@@ -171,72 +171,6 @@ impl<'de> Deserialize<'de> for SpendPolicy {
     where
         D: serde::Deserializer<'de>,
     {
-        // helper to recursively deserialize a policy in binary format
-        fn deserialize_policy<'de, V>(seq: &mut V) -> Result<SpendPolicy, V::Error>
-        where
-            V: SeqAccess<'de>,
-        {
-            let type_prefix: u8 = seq
-                .next_element()?
-                .ok_or_else(|| de::Error::custom("missing type prefix"))?;
-            match type_prefix {
-                POLICY_ABOVE_PREFIX => {
-                    let height = seq
-                        .next_element()?
-                        .ok_or_else(|| de::Error::custom("missing height"))?;
-                    Ok(SpendPolicy::Above(height))
-                }
-                POLICY_AFTER_PREFIX => {
-                    let unix_seconds: u64 = seq
-                        .next_element()?
-                        .ok_or_else(|| de::Error::custom("missing timestamp"))?;
-                    let timestamp = OffsetDateTime::from_unix_timestamp(unix_seconds as i64)
-                        .map_err(|_| de::Error::custom("invalid timestamp"))?;
-                    Ok(SpendPolicy::After(timestamp))
-                }
-                POLICY_PUBLIC_KEY_PREFIX => {
-                    let key: [u8; 32] = seq
-                        .next_element()?
-                        .ok_or_else(|| de::Error::custom("missing key"))?;
-                    Ok(SpendPolicy::PublicKey(PublicKey::new(key)))
-                }
-                POLICY_HASH_PREFIX => {
-                    let hash = seq
-                        .next_element()?
-                        .ok_or_else(|| de::Error::custom("missing hash"))?;
-                    Ok(SpendPolicy::Hash(hash))
-                }
-                POLICY_THRESHOLD_PREFIX => {
-                    let prefix: [u8; 2] = seq
-                        .next_element()?
-                        .ok_or_else(|| de::Error::custom("missing threshold prefix"))?;
-                    let n = prefix[0];
-                    let len = prefix[1] as usize;
-                    let mut policies = Vec::with_capacity(len);
-                    for _ in 0..len {
-                        policies.push(deserialize_policy(seq)?);
-                    }
-                    Ok(SpendPolicy::Threshold(n, policies))
-                }
-                POLICY_OPAQUE_PREFIX => {
-                    let addr = seq
-                        .next_element()?
-                        .ok_or_else(|| de::Error::custom("missing address"))?;
-                    Ok(SpendPolicy::Opaque(addr))
-                }
-                #[allow(deprecated)]
-                POLICY_UNLOCK_CONDITIONS_PREFIX => {
-                    #[allow(deprecated)]
-                    let uc = seq
-                        .next_element()?
-                        .ok_or_else(|| de::Error::custom("missing unlock conditions"))?;
-                    #[allow(deprecated)]
-                    Ok(SpendPolicy::UnlockConditions(uc))
-                }
-                _ => Err(de::Error::custom("invalid policy type")),
-            }
-        }
-
         struct SpendPolicyVisitor;
 
         impl<'de> Visitor<'de> for SpendPolicyVisitor {
@@ -244,21 +178,6 @@ impl<'de> Deserialize<'de> for SpendPolicy {
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("a spend policy")
-            }
-
-            // sia encoding
-            fn visit_seq<V>(self, mut seq: V) -> Result<Self::Value, V::Error>
-            where
-                V: SeqAccess<'de>,
-            {
-                let version: u8 = seq
-                    .next_element()?
-                    .ok_or_else(|| de::Error::custom("missing version"))?;
-                if version != 1 {
-                    return Err(de::Error::custom(format!("invalid version {:?}", version)));
-                }
-
-                deserialize_policy(&mut seq)
             }
 
             // json encoding
@@ -348,55 +267,12 @@ impl<'de> Deserialize<'de> for SpendPolicy {
             }
         }
 
-        if deserializer.is_human_readable() {
-            deserializer.deserialize_map(SpendPolicyVisitor)
-        } else {
-            deserializer.deserialize_tuple(256, SpendPolicyVisitor)
-        }
+        deserializer.deserialize_map(SpendPolicyVisitor)
     }
 }
 
 impl Serialize for SpendPolicy {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        // helper to recursively serialize a policy in binary format
-        fn serialize_policy<S>(policy: &SpendPolicy, s: &mut S) -> Result<(), S::Error>
-        where
-            S: SerializeTuple,
-        {
-            s.serialize_element(&policy.type_prefix())?; // type prefix
-            match policy {
-                SpendPolicy::Above(height) => s.serialize_element(height),
-                SpendPolicy::After(time) => {
-                    let unix_seconds = time.unix_timestamp() as u64;
-                    s.serialize_element(&unix_seconds)
-                }
-                SpendPolicy::PublicKey(pk) => {
-                    let mut arr: [u8; 32] = [0; 32];
-                    arr.copy_from_slice(pk.as_ref());
-                    s.serialize_element(&arr)
-                }
-                SpendPolicy::Hash(hash) => s.serialize_element(hash),
-                SpendPolicy::Threshold(n, policies) => {
-                    let prefix = [*n, policies.len() as u8];
-                    s.serialize_element(&prefix)?;
-                    for policy in policies {
-                        serialize_policy(policy, s)?;
-                    }
-                    Ok(())
-                }
-                SpendPolicy::Opaque(addr) => s.serialize_element(addr),
-                #[allow(deprecated)]
-                SpendPolicy::UnlockConditions(uc) => s.serialize_element(uc),
-            }
-        }
-
-        if !serializer.is_human_readable() {
-            let mut s = serializer.serialize_tuple(0)?;
-            s.serialize_element(&1u8)?;
-            serialize_policy(self, &mut s)?;
-            return s.end();
-        }
-
         let mut state = serializer.serialize_struct("SpendPolicy", 2)?;
         state.serialize_field("type", self.type_str())?;
         match self {
@@ -434,7 +310,73 @@ impl Serialize for SpendPolicy {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+impl SiaEncodable for SpendPolicy {
+	fn encode<W: std::io::Write>(&self, w: &mut W) -> encoding::Result<()> {
+		// helper to recursively encode policies
+		fn encode_policy<W: std::io::Write>(policy: &SpendPolicy, w: &mut W) -> encoding::Result<()> {
+			w.write_all(&[policy.type_prefix()])?;
+            match policy {
+                SpendPolicy::Above(height) => height.encode(w),
+                SpendPolicy::After(time) => (time.unix_timestamp() as u64).encode(w),
+                SpendPolicy::PublicKey(pk) => pk.encode(w),
+                SpendPolicy::Hash(hash) => hash.encode(w),
+                SpendPolicy::Threshold(of, policies) => {
+                    of.encode(w)?;
+					(policies.len() as u8).encode(w)?;
+					for policy in policies {
+						encode_policy(policy, w)?;
+					}
+                    Ok(())
+                }
+                SpendPolicy::Opaque(addr) => addr.encode(w),
+                #[allow(deprecated)]
+                SpendPolicy::UnlockConditions(uc) => uc.encode(w),
+            }
+        }
+		1u8.encode(w)?;
+		encode_policy(self, w)
+	}
+}
+
+impl SiaDecodable for SpendPolicy {
+	fn decode<R: std::io::Read>(r: &mut R) -> encoding::Result<Self> {
+		// helper to recursively decode policies
+		fn decode_policy<R: std::io::Read>(r: &mut R) -> encoding::Result<SpendPolicy> {
+			let policy_type = u8::decode(r)?;
+			match policy_type {
+				POLICY_ABOVE_PREFIX => Ok(SpendPolicy::Above(u64::decode(r)?)),
+				POLICY_AFTER_PREFIX => {
+					let unix_seconds = u64::decode(r)?;
+					let timestamp: OffsetDateTime = OffsetDateTime::from_unix_timestamp(unix_seconds as i64)
+						.map_err(|_| encoding::Error::Custom("invalid timestamp".to_string()))?;
+					Ok(SpendPolicy::After(timestamp))
+				}
+				POLICY_PUBLIC_KEY_PREFIX => Ok(SpendPolicy::PublicKey(PublicKey::decode(r)?)),
+				POLICY_HASH_PREFIX => Ok(SpendPolicy::Hash(Hash256::decode(r)?)),
+				POLICY_THRESHOLD_PREFIX => {
+					let of: u8 = u8::decode(r)?;
+					let n = u8::decode(r)?;
+					let mut policies = Vec::with_capacity(n as usize);
+					while policies.len() < n as usize {
+						policies.push(decode_policy(r)?);
+					}
+					Ok(SpendPolicy::Threshold(of, policies))
+				}
+				POLICY_OPAQUE_PREFIX => Ok(SpendPolicy::Opaque(Address::decode(r)?)),
+				#[allow(deprecated)]
+				POLICY_UNLOCK_CONDITIONS_PREFIX => Ok(SpendPolicy::UnlockConditions(UnlockConditions::decode(r)?)),
+				_ => Err(encoding::Error::Custom("invalid policy type".to_string())),
+			}
+		}
+		let policy_version = u8::decode(r)?;
+		if policy_version != 1 {
+			return Err(encoding::Error::Custom("invalid policy version".to_string()));
+		}
+		decode_policy(r)
+	}
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize, SiaEncode, SiaDecode)]
 /// A policy that has been satisfied by a set of preimages and signatures.
 pub struct SatisfiedPolicy {
     pub policy: SpendPolicy,
@@ -453,7 +395,7 @@ impl SatisfiedPolicy {
     }
 }
 
-/*#[cfg(test)]
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -650,7 +592,8 @@ mod tests {
                 .unwrap_or_else(|e| panic!("failed to deserialize json in test case {}: {}", i, e));
             assert_eq!(deserialized_json, *policy, "test case {}", i);
 
-            let serialized_binary = to_bytes(policy)
+            let mut serialized_binary = Vec::new();
+			policy.encode(&mut serialized_binary)
                 .unwrap_or_else(|e| panic!("failed to serialize binary in test case {}: {}", i, e));
             assert_eq!(
                 hex::encode(serialized_binary.clone()),
@@ -659,11 +602,11 @@ mod tests {
                 i
             );
 
-            let deserialized_binary: SpendPolicy = from_reader(&mut &serialized_binary[..])
+            let deserialized_binary = SpendPolicy::decode(&mut &serialized_binary[..])
                 .unwrap_or_else(|e| {
                     panic!("failed to deserialize binary in test case {}: {}", i, e)
                 });
             assert_eq!(deserialized_binary, *policy, "test case {}", i);
         }
     }
-}*/
+}
