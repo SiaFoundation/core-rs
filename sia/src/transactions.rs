@@ -469,9 +469,10 @@ mod tests {
         };
 
         // binary
-        /*let siafund_input_serialized = to_bytes(&siafund_input).unwrap();
-        let siafund_input_deserialized: SiafundInput =
-            from_reader(&mut &siafund_input_serialized[..]).unwrap();
+        let mut siafund_input_serialized: Vec<u8> = Vec::new();
+        siafund_input
+            .encode_v1(&mut siafund_input_serialized)
+            .unwrap();
         assert_eq!(
             siafund_input_serialized,
             [
@@ -485,7 +486,9 @@ mod tests {
                 155, 4, 148, 186, 140
             ]
         );
-        assert_eq!(siafund_input_deserialized, siafund_input);*/
+        let siafund_input_deserialized: SiafundInput =
+            SiafundInput::decode_v1(&mut &siafund_input_serialized[..]).unwrap();
+        assert_eq!(siafund_input_deserialized, siafund_input);
 
         // json
         let siafund_input_serialized = serde_json::to_string(&siafund_input).unwrap();
@@ -505,16 +508,18 @@ mod tests {
         };
 
         // binary
-        /*let output_serialized = to_bytes(&output).unwrap();
-        let output_deserialized: SiacoinOutput = from_reader(&mut &output_serialized[..]).unwrap();
+        let mut siacoin_output_serialized: Vec<u8> = Vec::new();
+        output.encode_v1(&mut siacoin_output_serialized).unwrap();
         assert_eq!(
-            output_serialized,
+            siacoin_output_serialized,
             [
                 7, 0, 0, 0, 0, 0, 0, 0, 241, 19, 24, 247, 77, 16, 207, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             ]
         );
-        assert_eq!(output_deserialized, output);*/
+        let siacoin_output_deserialized: SiacoinOutput =
+            SiacoinOutput::decode_v1(&mut &siacoin_output_serialized[..]).unwrap();
+        assert_eq!(siacoin_output_deserialized, output);
 
         // json
         let output_serialized = serde_json::to_string(&output).unwrap();
@@ -546,9 +551,8 @@ mod tests {
         };
 
         // binary
-        /*let signature_serialized = to_bytes(&signature).unwrap();
-        let signature_deserialized: TransactionSignature =
-            from_reader(&mut &signature_serialized[..]).unwrap();
+        let mut signature_serialized = Vec::new();
+        signature.encode_v1(&mut signature_serialized).unwrap();
         assert_eq!(
             signature_serialized,
             [
@@ -562,7 +566,9 @@ mod tests {
                 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3
             ]
         );
-        assert_eq!(signature_deserialized, signature);*/
+        let signature_deserialized =
+            TransactionSignature::decode_v1(&mut &signature_serialized[..]).unwrap();
+        assert_eq!(signature_deserialized, signature);
 
         // json
         let signature_serialized = serde_json::to_string(&signature).unwrap();
@@ -586,17 +592,19 @@ mod tests {
         };
 
         // binary
-        /*let output_serialized = to_bytes(&output).unwrap();
-        let output_deserialized: SiafundOutput = from_reader(&mut &output_serialized[..]).unwrap();
+        let mut siafund_output_serialized = Vec::new();
+        output.encode_v1(&mut siafund_output_serialized).unwrap();
         assert_eq!(
-            output_serialized,
+            siafund_output_serialized,
             [
                 7, 0, 0, 0, 0, 0, 0, 0, 241, 19, 24, 247, 77, 16, 207, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0,
                 0, 0, 0, 7, 91, 205, 21
             ]
         );
-        assert_eq!(output_deserialized, output);*/
+        let siafund_output_deserialized =
+            SiafundOutput::decode_v1(&mut &siafund_output_serialized[..]).unwrap();
+        assert_eq!(siafund_output_deserialized, output);
 
         // json
         let output_serialized = serde_json::to_string(&output).unwrap();
