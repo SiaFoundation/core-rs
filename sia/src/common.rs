@@ -7,7 +7,10 @@ use core::fmt;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
-#[derive(Debug, PartialEq, SiaEncode)]
+pub type BlockID = Hash256;
+
+#[derive(Debug, PartialEq, SiaEncode, SiaDecode, Serialize, Deserialize)]
+
 pub struct ChainIndex {
     pub height: u64,
     pub id: [u8; 32],
