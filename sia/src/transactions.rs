@@ -1,5 +1,6 @@
 use crate::encoding::{
-    SiaEncodable, SiaEncode, V1SiaDecodable, V1SiaDecode, V1SiaEncodable, V1SiaEncode,
+    SiaDecodable, SiaDecode, SiaEncodable, SiaEncode, V1SiaDecodable, V1SiaDecode, V1SiaEncodable,
+    V1SiaEncode,
 };
 use crate::signing::{PrivateKey, SigningState};
 use crate::specifier::{specifier, Specifier};
@@ -21,7 +22,9 @@ pub struct SiacoinInput {
     pub unlock_conditions: UnlockConditions,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, SiaEncode, V1SiaEncode, V1SiaDecode)]
+#[derive(
+    Debug, Clone, PartialEq, Serialize, Deserialize, SiaEncode, SiaDecode, V1SiaEncode, V1SiaDecode,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct SiacoinOutput {
     pub value: Currency,
@@ -37,12 +40,32 @@ pub struct SiafundInput {
     pub claim_address: Address,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, SiaEncode, V1SiaEncode, V1SiaDecode)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, SiaEncode, SiaDecode)]
 #[serde(rename_all = "camelCase")]
 pub struct SiafundOutput {
-    pub value: Currency,
+    pub value: u64,
     pub address: Address,
-    pub claim_start: Currency,
+}
+
+impl V1SiaEncodable for SiafundOutput {
+    fn encode_v1<W: std::io::Write>(&self, w: &mut W) -> encoding::Result<()> {
+        Currency::new(self.value as u128).encode_v1(w)?;
+        self.address.encode_v1(w)?;
+        Currency::new(0).encode_v1(w) // siad encodes a "claim start," but transactions its an error if it's non-zero.
+    }
+}
+
+impl V1SiaDecodable for SiafundOutput {
+    fn decode_v1<R: std::io::Read>(r: &mut R) -> encoding::Result<Self> {
+        let se = SiafundOutput {
+            value: Currency::decode_v1(r)?
+                .try_into()
+                .map_err(|_| encoding::Error::Custom("invalid value".to_string()))?,
+            address: Address::decode_v1(r)?,
+        };
+        Currency::decode_v1(r)?; // ignore claim start
+        Ok(se)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, V1SiaEncode, V1SiaDecode)]
@@ -381,20 +404,63 @@ mod base64 {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::signing::{NetworkHardforks, PublicKey, Signature};
-    use crate::ChainIndex;
+    use crate::{BlockID, ChainIndex};
+    use serde::de::DeserializeOwned;
+    use std::fmt::Debug;
     use std::time::SystemTime;
     use std::vec;
 
-    use super::*;
+    /// test_serialize_json is a helper to test serialization and deserialization of a struct to and from JSON.
+    fn test_serialize_json<S: Serialize + DeserializeOwned + Debug + PartialEq>(
+        obj: &S,
+        json_str: &str,
+    ) {
+        let serialized = serde_json::to_string(&obj).unwrap();
+        assert_eq!(serialized, json_str);
+        let deserialized: S = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, *obj);
+    }
+
+    /// test_serialize_v1 is a helper to test serialization and deserialization of a struct to and from Sia's
+    /// custom binary encoding.
+    fn test_serialize_v1<S: V1SiaEncodable + V1SiaDecodable + Debug + PartialEq>(
+        obj: &S,
+        hex_binary: &str,
+    ) {
+        let mut serialized = Vec::new();
+        obj.encode_v1(&mut serialized).unwrap();
+        assert_eq!(hex::encode(serialized.clone()), hex_binary);
+        let deserialized = S::decode_v1(&mut &serialized[..]).unwrap();
+        assert_eq!(deserialized, *obj);
+    }
+
+    /// test_serialize is a helper to test serialization and deserialization of a struct to and from Sia's
+    /// custom binary encoding.
+    fn test_serialize<S: SiaEncodable + SiaDecodable + Debug + PartialEq>(
+        obj: &S,
+        hex_binary: &str,
+    ) {
+        let mut serialized = Vec::new();
+        obj.encode(&mut serialized).unwrap();
+        assert_eq!(hex::encode(serialized.clone()), hex_binary);
+        let deserialized = S::decode(&mut &serialized[..]).unwrap();
+        assert_eq!(deserialized, *obj);
+    }
 
     #[test]
-    fn test_json_serialize_covered_fields() {
+    fn test_serialize_covered_fields() {
         let mut cf = CoveredFields::default();
         cf.siacoin_inputs.push(1);
         cf.siacoin_outputs.push(2);
         cf.siacoin_outputs.push(3);
-        assert_eq!(serde_json::to_string(&cf).unwrap(), "{\"wholeTransaction\":false,\"siacoinInputs\":[1],\"siacoinOutputs\":[2,3],\"fileContracts\":[],\"fileContractRevisions\":[],\"storageProofs\":[],\"siafundInputs\":[],\"siafundOutputs\":[],\"minerFees\":[],\"arbitraryData\":[],\"signatures\":[]}")
+
+        let binary_str = "000100000000000000010000000000000002000000000000000200000000000000030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+        test_serialize_v1(&cf, binary_str);
+
+        let json_str = "{\"wholeTransaction\":false,\"siacoinInputs\":[1],\"siacoinOutputs\":[2,3],\"fileContracts\":[],\"fileContractRevisions\":[],\"storageProofs\":[],\"siafundInputs\":[],\"siafundOutputs\":[],\"minerFees\":[],\"arbitraryData\":[],\"signatures\":[]}";
+        test_serialize_json(&cf, json_str);
     }
 
     #[test]
@@ -416,31 +482,18 @@ mod tests {
             ),
         };
 
-        // binary
-        let mut siacoin_input_serialized: Vec<u8> = Vec::new();
-        siacoin_input
-            .encode_v1(&mut siacoin_input_serialized)
-            .unwrap();
+        let binary_str = hex::encode([
+            179, 99, 58, 19, 112, 167, 32, 2, 174, 42, 149, 109, 33, 232, 212, 129, 195, 166, 158,
+            20, 102, 51, 71, 12, 246, 37, 236, 216, 63, 222, 170, 36, 123, 0, 0, 0, 0, 0, 0, 0, 1,
+            0, 0, 0, 0, 0, 0, 0, 101, 100, 50, 53, 53, 49, 57, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32, 0, 0,
+            0, 0, 0, 0, 0, 154, 172, 31, 251, 28, 253, 16, 121, 168, 198, 200, 123, 71, 218, 29,
+            86, 126, 53, 185, 114, 52, 153, 60, 40, 140, 26, 208, 219, 29, 28, 225, 182, 1, 0, 0,
+            0, 0, 0, 0, 0,
+        ]);
+        test_serialize_v1(&siacoin_input, binary_str.as_str());
 
-        assert_eq!(
-            siacoin_input_serialized,
-            [
-                179, 99, 58, 19, 112, 167, 32, 2, 174, 42, 149, 109, 33, 232, 212, 129, 195, 166,
-                158, 20, 102, 51, 71, 12, 246, 37, 236, 216, 63, 222, 170, 36, 123, 0, 0, 0, 0, 0,
-                0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 101, 100, 50, 53, 53, 49, 57, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 32, 0, 0, 0, 0, 0, 0, 0, 154, 172, 31, 251, 28, 253, 16, 121, 168, 198, 200,
-                123, 71, 218, 29, 86, 126, 53, 185, 114, 52, 153, 60, 40, 140, 26, 208, 219, 29,
-                28, 225, 182, 1, 0, 0, 0, 0, 0, 0, 0
-            ]
-        );
-        //assert_eq!(siacoin_input_deserialized, siacoin_input);
-
-        // json
-        let siacoin_input_serialized = serde_json::to_string(&siacoin_input).unwrap();
-        let siacoin_input_deserialized: SiacoinInput =
-            serde_json::from_str(&siacoin_input_serialized).unwrap();
-        assert_eq!(siacoin_input_serialized, "{\"parentID\":\"b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24\",\"unlockConditions\":{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1}}");
-        assert_eq!(siacoin_input_deserialized, siacoin_input);
+        let json_str = "{\"parentID\":\"b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24\",\"unlockConditions\":{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1}}";
+        test_serialize_json(&siacoin_input, json_str);
     }
 
     #[test]
@@ -469,33 +522,19 @@ mod tests {
         };
 
         // binary
-        let mut siafund_input_serialized: Vec<u8> = Vec::new();
-        siafund_input
-            .encode_v1(&mut siafund_input_serialized)
-            .unwrap();
-        assert_eq!(
-            siafund_input_serialized,
-            [
-                179, 99, 58, 19, 112, 167, 32, 2, 174, 42, 149, 109, 33, 232, 212, 129, 195, 166,
-                158, 20, 102, 51, 71, 12, 246, 37, 236, 216, 63, 222, 170, 36, 123, 0, 0, 0, 0, 0,
-                0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 101, 100, 50, 53, 53, 49, 57, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 32, 0, 0, 0, 0, 0, 0, 0, 154, 172, 31, 251, 28, 253, 16, 121, 168, 198, 200,
-                123, 71, 218, 29, 86, 126, 53, 185, 114, 52, 153, 60, 40, 140, 26, 208, 219, 29,
-                28, 225, 182, 1, 0, 0, 0, 0, 0, 0, 0, 143, 180, 156, 207, 23, 223, 220, 201, 82,
-                109, 236, 110, 232, 165, 204, 162, 15, 248, 36, 115, 2, 5, 61, 55, 119, 65, 11,
-                155, 4, 148, 186, 140
-            ]
-        );
-        let siafund_input_deserialized: SiafundInput =
-            SiafundInput::decode_v1(&mut &siafund_input_serialized[..]).unwrap();
-        assert_eq!(siafund_input_deserialized, siafund_input);
+        let binary_str = hex::encode([
+            179, 99, 58, 19, 112, 167, 32, 2, 174, 42, 149, 109, 33, 232, 212, 129, 195, 166, 158,
+            20, 102, 51, 71, 12, 246, 37, 236, 216, 63, 222, 170, 36, 123, 0, 0, 0, 0, 0, 0, 0, 1,
+            0, 0, 0, 0, 0, 0, 0, 101, 100, 50, 53, 53, 49, 57, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32, 0, 0,
+            0, 0, 0, 0, 0, 154, 172, 31, 251, 28, 253, 16, 121, 168, 198, 200, 123, 71, 218, 29,
+            86, 126, 53, 185, 114, 52, 153, 60, 40, 140, 26, 208, 219, 29, 28, 225, 182, 1, 0, 0,
+            0, 0, 0, 0, 0, 143, 180, 156, 207, 23, 223, 220, 201, 82, 109, 236, 110, 232, 165, 204,
+            162, 15, 248, 36, 115, 2, 5, 61, 55, 119, 65, 11, 155, 4, 148, 186, 140,
+        ]);
+        test_serialize_v1(&siafund_input, binary_str.as_str());
 
-        // json
-        let siafund_input_serialized = serde_json::to_string(&siafund_input).unwrap();
-        let siafund_input_deserialized: SiafundInput =
-            serde_json::from_str(&siafund_input_serialized).unwrap();
-        assert_eq!(siafund_input_serialized, "{\"parentID\":\"b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24\",\"unlockConditions\":{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1},\"claimAddress\":\"8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0\"}");
-        assert_eq!(siafund_input_deserialized, siafund_input);
+        let json_str = "{\"parentID\":\"b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24\",\"unlockConditions\":{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1},\"claimAddress\":\"8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0\"}";
+        test_serialize_json(&siafund_input, json_str);
     }
 
     #[test]
@@ -507,31 +546,20 @@ mod tests {
             address: Address::parse_string(addr_str).unwrap(),
         };
 
-        // binary
-        let mut siacoin_output_serialized: Vec<u8> = Vec::new();
-        output.encode_v1(&mut siacoin_output_serialized).unwrap();
-        assert_eq!(
-            siacoin_output_serialized,
-            [
-                7, 0, 0, 0, 0, 0, 0, 0, 241, 19, 24, 247, 77, 16, 207, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            ]
-        );
-        let siacoin_output_deserialized: SiacoinOutput =
-            SiacoinOutput::decode_v1(&mut &siacoin_output_serialized[..]).unwrap();
-        assert_eq!(siacoin_output_deserialized, output);
+        let v1_binary_str = hex::encode([
+            7, 0, 0, 0, 0, 0, 0, 0, 241, 19, 24, 247, 77, 16, 207, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ]);
+        test_serialize_v1(&output, v1_binary_str.as_str());
 
-        // json
-        let output_serialized = serde_json::to_string(&output).unwrap();
-        let output_deserialized: SiacoinOutput = serde_json::from_str(&output_serialized).unwrap();
-        assert_eq!(
-            output_serialized,
-            format!(
-                "{{\"value\":\"67856467336433871\",\"address\":\"{}\"}}",
-                addr_str
-            )
+        let v2_binary_str = "cf104df71813f10000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+        test_serialize(&output, v2_binary_str);
+
+        let json_str = format!(
+            "{{\"value\":\"67856467336433871\",\"address\":\"{}\"}}",
+            addr_str
         );
-        assert_eq!(output_deserialized, output);
+        test_serialize_json(&output, json_str.as_str());
     }
 
     #[test]
@@ -550,35 +578,20 @@ mod tests {
             signature: Signature::new([3u8; 64]).data().to_vec(),
         };
 
-        // binary
-        let mut signature_serialized = Vec::new();
-        signature.encode_v1(&mut signature_serialized).unwrap();
-        assert_eq!(
-            signature_serialized,
-            [
-                179, 99, 58, 19, 112, 167, 32, 2, 174, 42, 149, 109, 33, 232, 212, 129, 195, 166,
-                158, 20, 102, 51, 71, 12, 246, 37, 236, 216, 63, 222, 170, 36, 1, 0, 0, 0, 0, 0, 0,
-                0, 2, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-                3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-                3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3
-            ]
-        );
-        let signature_deserialized =
-            TransactionSignature::decode_v1(&mut &signature_serialized[..]).unwrap();
-        assert_eq!(signature_deserialized, signature);
+        let binary_str = hex::encode([
+            179, 99, 58, 19, 112, 167, 32, 2, 174, 42, 149, 109, 33, 232, 212, 129, 195, 166, 158,
+            20, 102, 51, 71, 12, 246, 37, 236, 216, 63, 222, 170, 36, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0,
+            0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            64, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+            3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+            3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+        ]);
+        test_serialize_v1(&signature, binary_str.as_str());
 
-        // json
-        let signature_serialized = serde_json::to_string(&signature).unwrap();
-        let signature_deserialized: TransactionSignature =
-            serde_json::from_str(&signature_serialized).unwrap();
-        assert_eq!(
-            signature_serialized,
-            "{\"parentID\":\"b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24\",\"publicKeyIndex\":1,\"timelock\":2,\"coveredFields\":{\"wholeTransaction\":true,\"siacoinInputs\":[],\"siacoinOutputs\":[],\"fileContracts\":[],\"fileContractRevisions\":[],\"storageProofs\":[],\"siafundInputs\":[],\"siafundOutputs\":[],\"minerFees\":[],\"arbitraryData\":[],\"signatures\":[]},\"signature\":\"AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAw==\"}",
-        );
-        assert_eq!(signature_deserialized, signature);
+        let json_str = "{\"parentID\":\"b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24\",\"publicKeyIndex\":1,\"timelock\":2,\"coveredFields\":{\"wholeTransaction\":true,\"siacoinInputs\":[],\"siacoinOutputs\":[],\"fileContracts\":[],\"fileContractRevisions\":[],\"storageProofs\":[],\"siafundInputs\":[],\"siafundOutputs\":[],\"minerFees\":[],\"arbitraryData\":[],\"signatures\":[]},\"signature\":\"AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAw==\"}";
+        test_serialize_json(&signature, json_str);
     }
 
     #[test]
@@ -586,37 +599,25 @@ mod tests {
         let addr_str =
             "000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69";
         let output = SiafundOutput {
-            value: Currency::new(67856467336433871),
+            value: 67856467336433871,
             address: Address::parse_string(addr_str).unwrap(),
-            claim_start: Currency::new(123456789),
         };
 
-        // binary
-        let mut siafund_output_serialized = Vec::new();
-        output.encode_v1(&mut siafund_output_serialized).unwrap();
-        assert_eq!(
-            siafund_output_serialized,
-            [
-                7, 0, 0, 0, 0, 0, 0, 0, 241, 19, 24, 247, 77, 16, 207, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0,
-                0, 0, 0, 7, 91, 205, 21
-            ]
-        );
-        let siafund_output_deserialized =
-            SiafundOutput::decode_v1(&mut &siafund_output_serialized[..]).unwrap();
-        assert_eq!(siafund_output_deserialized, output);
+        let v1_binary_str = hex::encode([
+            7, 0, 0, 0, 0, 0, 0, 0, 241, 19, 24, 247, 77, 16, 207, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ]);
+        test_serialize_v1(&output, v1_binary_str.as_str());
 
-        // json
-        let output_serialized = serde_json::to_string(&output).unwrap();
-        let output_deserialized: SiafundOutput = serde_json::from_str(&output_serialized).unwrap();
-        assert_eq!(
-            output_serialized,
-            format!(
-                "{{\"value\":\"67856467336433871\",\"address\":\"{}\",\"claimStart\":\"123456789\"}}",
-                addr_str
-            )
+        let v2_binary_str =
+            "cf104df71813f1000000000000000000000000000000000000000000000000000000000000000000";
+        test_serialize(&output, v2_binary_str);
+
+        let json_str = format!(
+            "{{\"value\":67856467336433871,\"address\":\"{}\"}}",
+            addr_str
         );
-        assert_eq!(output_deserialized, output);
+        test_serialize_json(&output, json_str.as_str());
     }
 
     #[test]
@@ -651,31 +652,20 @@ mod tests {
             revision_number: 4,
         };
 
-        // binary
-        let mut contract_serialized = Vec::new();
-        contract.encode_v1(&mut contract_serialized).unwrap();
-        assert_eq!(
-            contract_serialized,
-            [
-                1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0,
-                2, 0, 0, 0, 0, 0, 0, 0, 1, 200, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3,
-                21, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 138, 248, 3,
-                3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0
-            ],
-        );
-        let contract_deserialized = FileContract::decode_v1(&mut &contract_serialized[..]).unwrap();
-        assert_eq!(contract_deserialized, contract);
+        let binary_str = hex::encode([
+            1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 2, 0,
+            0, 0, 0, 0, 0, 0, 1, 200, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 21, 2, 2,
+            2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 138, 248, 3, 3, 3, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 4, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0,
+            0, 0, 0, 0, 0, 0,
+        ]);
+        test_serialize_v1(&contract, binary_str.as_str());
 
-        // json
-        let contract_serialized = serde_json::to_string(&contract).unwrap();
-        let contract_deserialized: FileContract =
-            serde_json::from_str(&contract_serialized).unwrap();
-        assert_eq!(contract_serialized, "{\"filesize\":1,\"fileMerkleRoot\":\"0101010000000000000000000000000000000000000000000000000000000000\",\"windowStart\":2,\"windowEnd\":3,\"payout\":\"456\",\"validProofOutputs\":[{\"value\":\"789\",\"address\":\"02020200000000000000000000000000000000000000000000000000000000008749787b31db\"}],\"missedProofOutputs\":[{\"value\":\"101112\",\"address\":\"0303030000000000000000000000000000000000000000000000000000000000c596d559a239\"}],\"unlockHash\":\"0404040000000000000000000000000000000000000000000000000000000000\",\"revisionNumber\":4}");
-        assert_eq!(contract_deserialized, contract);
+        let json_str = "{\"filesize\":1,\"fileMerkleRoot\":\"0101010000000000000000000000000000000000000000000000000000000000\",\"windowStart\":2,\"windowEnd\":3,\"payout\":\"456\",\"validProofOutputs\":[{\"value\":\"789\",\"address\":\"02020200000000000000000000000000000000000000000000000000000000008749787b31db\"}],\"missedProofOutputs\":[{\"value\":\"101112\",\"address\":\"0303030000000000000000000000000000000000000000000000000000000000c596d559a239\"}],\"unlockHash\":\"0404040000000000000000000000000000000000000000000000000000000000\",\"revisionNumber\":4}";
+        test_serialize_json(&contract, json_str);
     }
 
     #[test]
@@ -723,36 +713,24 @@ mod tests {
             revision_number: 4,
         };
 
-        // binary
-        let mut revision_serialized = Vec::new();
-        revision.encode_v1(&mut revision_serialized).unwrap();
-        assert_eq!(
-            revision_serialized,
-            [
-                9, 8, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 123, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 101, 100, 50, 53, 53,
-                49, 57, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 154, 172, 31, 251, 28,
-                253, 16, 121, 168, 198, 200, 123, 71, 218, 29, 86, 126, 53, 185, 114, 52, 153, 60,
-                40, 140, 26, 208, 219, 29, 28, 225, 182, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0,
-                0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0,
-                0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 21, 2, 2, 2, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,
-                0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 21, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 4, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-            ],
-        );
-        let revision_deserialized =
-            FileContractRevision::decode_v1(&mut &revision_serialized[..]).unwrap();
-        assert_eq!(revision_deserialized, revision);
+        let binary_str = hex::encode([
+            9, 8, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 123, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 101, 100, 50, 53, 53, 49,
+            57, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 154, 172, 31, 251, 28, 253, 16,
+            121, 168, 198, 200, 123, 71, 218, 29, 86, 126, 53, 185, 114, 52, 153, 60, 40, 140, 26,
+            208, 219, 29, 28, 225, 182, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
+            0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+            0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 21, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0,
+            0, 0, 3, 21, 3, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ]);
+        test_serialize_v1(&revision, binary_str.as_str());
 
-        // json
-        let revision_serialized = serde_json::to_string(&revision).unwrap();
-        let revision_deserialized: FileContractRevision =
-            serde_json::from_str(&revision_serialized).unwrap();
-        assert_eq!(revision_serialized, "{\"parentID\":\"0908070000000000000000000000000000000000000000000000000000000000\",\"unlockConditions\":{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1},\"revisionNumber\":4,\"filesize\":1,\"fileMerkleRoot\":\"0101010000000000000000000000000000000000000000000000000000000000\",\"windowStart\":2,\"windowEnd\":3,\"validProofOutputs\":[{\"value\":\"789\",\"address\":\"02020200000000000000000000000000000000000000000000000000000000008749787b31db\"}],\"missedProofOutputs\":[{\"value\":\"789\",\"address\":\"0303030000000000000000000000000000000000000000000000000000000000c596d559a239\"}],\"unlockHash\":\"0404040000000000000000000000000000000000000000000000000000000000\"}");
-        assert_eq!(revision_deserialized, revision);
+        let json_str = "{\"parentID\":\"0908070000000000000000000000000000000000000000000000000000000000\",\"unlockConditions\":{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1},\"revisionNumber\":4,\"filesize\":1,\"fileMerkleRoot\":\"0101010000000000000000000000000000000000000000000000000000000000\",\"windowStart\":2,\"windowEnd\":3,\"validProofOutputs\":[{\"value\":\"789\",\"address\":\"02020200000000000000000000000000000000000000000000000000000000008749787b31db\"}],\"missedProofOutputs\":[{\"value\":\"789\",\"address\":\"0303030000000000000000000000000000000000000000000000000000000000c596d559a239\"}],\"unlockHash\":\"0404040000000000000000000000000000000000000000000000000000000000\"}";
+        test_serialize_json(&revision, json_str);
     }
 
     #[test]
@@ -779,34 +757,19 @@ mod tests {
             ],
         };
 
-        // binary
-        let mut storage_proof_serialized = Vec::new();
-        storage_proof
-            .encode_v1(&mut storage_proof_serialized)
-            .unwrap();
-        assert_eq!(
-            storage_proof_serialized,
-            [
-                179, 99, 58, 19, 112, 167, 32, 2, 174, 42, 149, 109, 33, 232, 212, 129, 195, 166,
-                158, 20, 102, 51, 71, 12, 246, 37, 236, 216, 63, 222, 170, 36, 1, 2, 3, 4, 5, 6, 7,
-                8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
-                29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
-                50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 2, 0, 0, 0, 0, 0, 0, 0,
-                1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 4, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0
-            ]
-        );
-        let storage_proof_deserialized =
-            StorageProof::decode_v1(&mut &storage_proof_serialized[..]).unwrap();
-        assert_eq!(storage_proof_deserialized, storage_proof);
+        let binary_str = hex::encode([
+            179, 99, 58, 19, 112, 167, 32, 2, 174, 42, 149, 109, 33, 232, 212, 129, 195, 166, 158,
+            20, 102, 51, 71, 12, 246, 37, 236, 216, 63, 222, 170, 36, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+            10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+            32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53,
+            54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 2, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 5, 6,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ]);
+        test_serialize_v1(&storage_proof, binary_str.as_str());
 
-        // json
-        let storage_proof_serialized = serde_json::to_string(&storage_proof).unwrap();
-        let storage_proof_deserialized: StorageProof =
-            serde_json::from_str(&storage_proof_serialized).unwrap();
-        assert_eq!(storage_proof_serialized, "{\"parentID\":\"b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24\",\"leaf\":\"0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40\",\"proof\":[\"0102030000000000000000000000000000000000000000000000000000000000\",\"0405060000000000000000000000000000000000000000000000000000000000\"]}");
-        assert_eq!(storage_proof_deserialized, storage_proof);
+        let json_str = "{\"parentID\":\"b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24\",\"leaf\":\"0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40\",\"proof\":[\"0102030000000000000000000000000000000000000000000000000000000000\",\"0405060000000000000000000000000000000000000000000000000000000000\"]}";
+        test_serialize_json(&storage_proof, json_str);
     }
 
     #[test]
@@ -824,7 +787,7 @@ mod tests {
         let state = SigningState {
             index: ChainIndex {
                 height: 0,
-                id: [0; 32],
+                id: BlockID::default(),
             },
             median_timestamp: SystemTime::now(),
             hardforks: NetworkHardforks {
@@ -888,7 +851,7 @@ mod tests {
         let state = SigningState {
             index: ChainIndex {
                 height: 0,
-                id: [0; 32],
+                id: BlockID::default(),
             },
             median_timestamp: SystemTime::now(),
             hardforks: NetworkHardforks {
@@ -962,27 +925,14 @@ mod tests {
             arbitrary_data: Vec::new(),
             signatures: Vec::new(),
         };
+        let binary_str = hex::encode([
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ]);
+        test_serialize_v1(&transaction, binary_str.as_str());
 
-        // binary
-        let mut transaction_serialized = Vec::new();
-        transaction.encode_v1(&mut transaction_serialized).unwrap();
-        assert_eq!(
-            transaction_serialized,
-            [
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-            ]
-        );
-        let transaction_deserialized =
-            Transaction::decode_v1(&mut &transaction_serialized[..]).unwrap();
-        assert_eq!(transaction_deserialized, transaction);
-
-        // json
-        let transaction_serialized = serde_json::to_string(&transaction).unwrap();
-        let transaction_deserialized: Transaction =
-            serde_json::from_str(&transaction_serialized).unwrap();
-        assert_eq!(transaction_serialized, "{\"siacoinInputs\":[],\"siacoinOutputs\":[],\"fileContracts\":[],\"fileContractRevisions\":[],\"storageProofs\":[],\"siafundInputs\":[],\"siafundOutputs\":[],\"minerFees\":[],\"arbitraryData\":[],\"signatures\":[]}");
-        assert_eq!(transaction_deserialized, transaction);
+        let json_str = "{\"siacoinInputs\":[],\"siacoinOutputs\":[],\"fileContracts\":[],\"fileContractRevisions\":[],\"storageProofs\":[],\"siafundInputs\":[],\"siafundOutputs\":[],\"minerFees\":[],\"arbitraryData\":[],\"signatures\":[]}";
+        test_serialize_json(&transaction, json_str);
     }
 }

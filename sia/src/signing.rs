@@ -3,7 +3,6 @@ use std::time::SystemTime;
 
 use crate::encoding::{SiaDecodable, SiaDecode, SiaEncodable, SiaEncode};
 use crate::{ChainIndex, Hash256, HexParseError};
-use base64::prelude::*;
 use ed25519_dalek::{Signature as ED25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::de::Error;
 use serde::{Deserialize, Serialize};
@@ -117,11 +116,7 @@ pub struct Signature([u8; 64]);
 
 impl Serialize for Signature {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            String::serialize(&BASE64_STANDARD.encode(self.0), serializer)
-        } else {
-            <[u8]>::serialize(&self.0, serializer) // prefixed with length
-        }
+        String::serialize(&hex::encode(self.0), serializer)
     }
 }
 
@@ -130,22 +125,12 @@ impl<'de> Deserialize<'de> for Signature {
     where
         D: serde::Deserializer<'de>,
     {
-        if deserializer.is_human_readable() {
-            let s = String::deserialize(deserializer)?;
-            let sig = BASE64_STANDARD
-                .decode(s)
-                .map_err(|e| D::Error::custom(format!("{:?}", e)))?;
-            if sig.len() != 64 {
-                return Err(D::Error::custom("Invalid signature length"));
-            }
-            Ok(Signature(sig.try_into().unwrap()))
-        } else {
-            let data = <Vec<u8>>::deserialize(deserializer)?;
-            if data.len() != 64 {
-                return Err(D::Error::custom("Invalid signature length"));
-            }
-            Ok(Signature(data.try_into().unwrap()))
+        let buf = hex::decode(String::deserialize(deserializer)?)
+            .map_err(|e| D::Error::custom(format!("{:?}", e)))?;
+        if buf.len() != 64 {
+            return Err(D::Error::custom("Invalid signature length"));
         }
+        Ok(Signature(buf.try_into().unwrap()))
     }
 }
 
@@ -324,9 +309,8 @@ mod tests {
                 claim_address: Address::from([0u8; 32]),
             }],
             siafund_outputs: vec![SiafundOutput {
-                value: Currency::new(0),
+                value: 0,
                 address: Address::from([0u8; 32]),
-                claim_start: Currency::new(0),
             }],
             miner_fees: vec![Currency::new(0)],
             arbitrary_data: vec![vec![1, 2, 3]],

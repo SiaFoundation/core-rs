@@ -13,7 +13,7 @@ pub type BlockID = Hash256;
 
 pub struct ChainIndex {
     pub height: u64,
-    pub id: [u8; 32],
+    pub id: BlockID,
 }
 
 impl fmt::Display for ChainIndex {

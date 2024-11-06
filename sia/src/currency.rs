@@ -57,7 +57,7 @@ impl V1SiaDecodable for Currency {
 
 impl SiaEncodable for Currency {
     fn encode<W: Write>(&self, w: &mut W) -> encoding::Result<()> {
-        w.write_all(&self.0.to_be_bytes())?;
+        w.write_all(&self.0.to_le_bytes())?;
         Ok(())
     }
 }
@@ -66,7 +66,7 @@ impl SiaDecodable for Currency {
     fn decode<R: std::io::Read>(r: &mut R) -> encoding::Result<Self> {
         let mut buf = [0u8; 16];
         r.read_exact(&mut buf)?;
-        Ok(Currency(u128::from_be_bytes(buf)))
+        Ok(Currency(u128::from_le_bytes(buf)))
     }
 }
 
@@ -82,6 +82,13 @@ impl Deref for Currency {
 impl DerefMut for Currency {
     fn deref_mut(&mut self) -> &mut u128 {
         &mut self.0
+    }
+}
+
+impl TryInto<u64> for Currency {
+    type Error = core::num::TryFromIntError;
+    fn try_into(self) -> Result<u64, Self::Error> {
+        self.0.try_into()
     }
 }
 
