@@ -67,6 +67,29 @@ impl<T: SiaEncodable> SiaEncodable for [T] {
     }
 }
 
+impl<T: SiaEncodable> SiaEncodable for Option<T> {
+	fn encode<W: Write>(&self, w: &mut W) -> Result<()> {
+		match self {
+			Some(v) => {
+				true.encode(w)?;
+				v.encode(w)
+			}
+			None => false.encode(w),
+		}
+	}
+}
+
+impl <T: SiaDecodable> SiaDecodable for Option<T> {
+	fn decode<R: Read>(r: &mut R) -> Result<Self> {
+		let has_value = bool::decode(r)?;
+		if has_value {
+			Ok(Some(T::decode(r)?))
+		} else {
+			Ok(None)
+		}
+	}
+}
+
 macro_rules! impl_sia_numeric {
     ($($t:ty),*) => {
         $(
