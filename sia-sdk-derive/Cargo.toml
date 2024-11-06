@@ -2,7 +2,7 @@
 name = "sia-sdk-derive"
 version = "0.0.1"
 edition = "2021"
-repository = "https://github.com/SiaFoundation/sia-rs"
+repository = "https://github.com/SiaFoundation/sia-sdk-rs"
 license = "MIT"
 description = "Macro implementations for sia-sdk"
 authors = ["The Sia Foundation"]
