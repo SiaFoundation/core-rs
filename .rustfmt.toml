@@ -1,0 +1,3 @@
+newline_style="Unix"
+# only supported in nightly
+imports_granularity="Module"
