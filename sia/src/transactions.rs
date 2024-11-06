@@ -193,8 +193,8 @@ impl Transaction {
         for &i in covered_sigs {
             if i >= self.signatures.len() {
                 return Err(encoding::Error::Custom(
-					"signatures index out of bounds".to_string(),
-				));
+                    "signatures index out of bounds".to_string(),
+                ));
             }
             self.signatures[i].encode_v1(&mut state)?;
         }

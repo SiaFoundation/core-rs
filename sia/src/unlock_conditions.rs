@@ -73,7 +73,9 @@ impl From<PublicKey> for UnlockKey {
 }
 
 // specifies the conditions for spending an output or revising a file contract.
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, SiaEncode, SiaDecode, V1SiaEncode, V1SiaDecode)]
+#[derive(
+    Debug, PartialEq, Clone, Serialize, Deserialize, SiaEncode, SiaDecode, V1SiaEncode, V1SiaDecode,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct UnlockConditions {
     pub timelock: u64,

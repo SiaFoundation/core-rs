@@ -447,7 +447,12 @@ mod tests {
             let signature = unsigned_transaction
                 .sign(&state, &covered_fields, Hash256::default(), 1, 100, &key)
                 .unwrap();
-            assert_eq!(hex::encode(signature.signature.clone()), tc.sig_string, "height: {}", tc.height);
+            assert_eq!(
+                hex::encode(signature.signature.clone()),
+                tc.sig_string,
+                "height: {}",
+                tc.height
+            );
 
             // manually build the sig_hash and check the signature
             let sig_hash = if tc.whole_transaction {
@@ -460,7 +465,11 @@ mod tests {
                     .unwrap()
             };
             let sig = Signature::new(signature.signature.try_into().unwrap());
-            assert!(key.public_key().verify(sig_hash.as_ref(), &sig), "height: {}", tc.height);
+            assert!(
+                key.public_key().verify(sig_hash.as_ref(), &sig),
+                "height: {}",
+                tc.height
+            );
         }
     }
 }

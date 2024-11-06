@@ -1,10 +1,10 @@
+use crate::encoding::{self, SiaDecodable, SiaDecode, SiaEncodable, SiaEncode};
 use crate::signing::{PublicKey, Signature};
 #[allow(deprecated)]
 use crate::unlock_conditions::UnlockConditions;
-use crate::encoding::{self, SiaEncodable, SiaEncode, SiaDecodable, SiaDecode};
 use crate::{Address, Hash256};
-use core::fmt;
 use blake2b_simd::Params;
+use core::fmt;
 use serde::de::{self, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
@@ -158,7 +158,9 @@ impl SpendPolicy {
             for policy in of {
                 opaque.push(SpendPolicy::Opaque(policy.address()))
             }
-			SpendPolicy::Threshold(*n, opaque).encode(&mut state).unwrap();
+            SpendPolicy::Threshold(*n, opaque)
+                .encode(&mut state)
+                .unwrap();
         } else {
             self.encode(&mut state).unwrap();
         }
@@ -311,10 +313,13 @@ impl Serialize for SpendPolicy {
 }
 
 impl SiaEncodable for SpendPolicy {
-	fn encode<W: std::io::Write>(&self, w: &mut W) -> encoding::Result<()> {
-		// helper to recursively encode policies
-		fn encode_policy<W: std::io::Write>(policy: &SpendPolicy, w: &mut W) -> encoding::Result<()> {
-			w.write_all(&[policy.type_prefix()])?;
+    fn encode<W: std::io::Write>(&self, w: &mut W) -> encoding::Result<()> {
+        // helper to recursively encode policies
+        fn encode_policy<W: std::io::Write>(
+            policy: &SpendPolicy,
+            w: &mut W,
+        ) -> encoding::Result<()> {
+            w.write_all(&[policy.type_prefix()])?;
             match policy {
                 SpendPolicy::Above(height) => height.encode(w),
                 SpendPolicy::After(time) => (time.unix_timestamp() as u64).encode(w),
@@ -322,10 +327,10 @@ impl SiaEncodable for SpendPolicy {
                 SpendPolicy::Hash(hash) => hash.encode(w),
                 SpendPolicy::Threshold(of, policies) => {
                     of.encode(w)?;
-					(policies.len() as u8).encode(w)?;
-					for policy in policies {
-						encode_policy(policy, w)?;
-					}
+                    (policies.len() as u8).encode(w)?;
+                    for policy in policies {
+                        encode_policy(policy, w)?;
+                    }
                     Ok(())
                 }
                 SpendPolicy::Opaque(addr) => addr.encode(w),
@@ -333,47 +338,53 @@ impl SiaEncodable for SpendPolicy {
                 SpendPolicy::UnlockConditions(uc) => uc.encode(w),
             }
         }
-		1u8.encode(w)?;
-		encode_policy(self, w)
-	}
+        1u8.encode(w)?;
+        encode_policy(self, w)
+    }
 }
 
 impl SiaDecodable for SpendPolicy {
-	fn decode<R: std::io::Read>(r: &mut R) -> encoding::Result<Self> {
-		// helper to recursively decode policies
-		fn decode_policy<R: std::io::Read>(r: &mut R) -> encoding::Result<SpendPolicy> {
-			let policy_type = u8::decode(r)?;
-			match policy_type {
-				POLICY_ABOVE_PREFIX => Ok(SpendPolicy::Above(u64::decode(r)?)),
-				POLICY_AFTER_PREFIX => {
-					let unix_seconds = u64::decode(r)?;
-					let timestamp: OffsetDateTime = OffsetDateTime::from_unix_timestamp(unix_seconds as i64)
-						.map_err(|_| encoding::Error::Custom("invalid timestamp".to_string()))?;
-					Ok(SpendPolicy::After(timestamp))
-				}
-				POLICY_PUBLIC_KEY_PREFIX => Ok(SpendPolicy::PublicKey(PublicKey::decode(r)?)),
-				POLICY_HASH_PREFIX => Ok(SpendPolicy::Hash(Hash256::decode(r)?)),
-				POLICY_THRESHOLD_PREFIX => {
-					let of: u8 = u8::decode(r)?;
-					let n = u8::decode(r)?;
-					let mut policies = Vec::with_capacity(n as usize);
-					while policies.len() < n as usize {
-						policies.push(decode_policy(r)?);
-					}
-					Ok(SpendPolicy::Threshold(of, policies))
-				}
-				POLICY_OPAQUE_PREFIX => Ok(SpendPolicy::Opaque(Address::decode(r)?)),
-				#[allow(deprecated)]
-				POLICY_UNLOCK_CONDITIONS_PREFIX => Ok(SpendPolicy::UnlockConditions(UnlockConditions::decode(r)?)),
-				_ => Err(encoding::Error::Custom("invalid policy type".to_string())),
-			}
-		}
-		let policy_version = u8::decode(r)?;
-		if policy_version != 1 {
-			return Err(encoding::Error::Custom("invalid policy version".to_string()));
-		}
-		decode_policy(r)
-	}
+    fn decode<R: std::io::Read>(r: &mut R) -> encoding::Result<Self> {
+        // helper to recursively decode policies
+        fn decode_policy<R: std::io::Read>(r: &mut R) -> encoding::Result<SpendPolicy> {
+            let policy_type = u8::decode(r)?;
+            match policy_type {
+                POLICY_ABOVE_PREFIX => Ok(SpendPolicy::Above(u64::decode(r)?)),
+                POLICY_AFTER_PREFIX => {
+                    let unix_seconds = u64::decode(r)?;
+                    let timestamp: OffsetDateTime =
+                        OffsetDateTime::from_unix_timestamp(unix_seconds as i64).map_err(|_| {
+                            encoding::Error::Custom("invalid timestamp".to_string())
+                        })?;
+                    Ok(SpendPolicy::After(timestamp))
+                }
+                POLICY_PUBLIC_KEY_PREFIX => Ok(SpendPolicy::PublicKey(PublicKey::decode(r)?)),
+                POLICY_HASH_PREFIX => Ok(SpendPolicy::Hash(Hash256::decode(r)?)),
+                POLICY_THRESHOLD_PREFIX => {
+                    let of: u8 = u8::decode(r)?;
+                    let n = u8::decode(r)?;
+                    let mut policies = Vec::with_capacity(n as usize);
+                    while policies.len() < n as usize {
+                        policies.push(decode_policy(r)?);
+                    }
+                    Ok(SpendPolicy::Threshold(of, policies))
+                }
+                POLICY_OPAQUE_PREFIX => Ok(SpendPolicy::Opaque(Address::decode(r)?)),
+                #[allow(deprecated)]
+                POLICY_UNLOCK_CONDITIONS_PREFIX => {
+                    Ok(SpendPolicy::UnlockConditions(UnlockConditions::decode(r)?))
+                }
+                _ => Err(encoding::Error::Custom("invalid policy type".to_string())),
+            }
+        }
+        let policy_version = u8::decode(r)?;
+        if policy_version != 1 {
+            return Err(encoding::Error::Custom(
+                "invalid policy version".to_string(),
+            ));
+        }
+        decode_policy(r)
+    }
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, SiaEncode, SiaDecode)]
@@ -593,7 +604,8 @@ mod tests {
             assert_eq!(deserialized_json, *policy, "test case {}", i);
 
             let mut serialized_binary = Vec::new();
-			policy.encode(&mut serialized_binary)
+            policy
+                .encode(&mut serialized_binary)
                 .unwrap_or_else(|e| panic!("failed to serialize binary in test case {}: {}", i, e));
             assert_eq!(
                 hex::encode(serialized_binary.clone()),
