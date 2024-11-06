@@ -365,108 +365,58 @@ mod tests {
         struct TestCase {
             height: u64,
             whole_transaction: bool,
-            signature: Signature,
+            sig_string: String,
         }
         let test_cases = [
             TestCase {
                 height: 1,
                 whole_transaction: true,
-                signature: Signature([
-                    234, 238, 234, 82, 152, 120, 252, 134, 26, 199, 122, 110, 100, 234, 63, 174,
-                    163, 91, 8, 4, 246, 85, 241, 247, 166, 72, 109, 221, 91, 16, 83, 6, 33, 236,
-                    123, 143, 220, 242, 58, 214, 111, 116, 5, 171, 35, 69, 214, 59, 87, 13, 56, 85,
-                    84, 6, 147, 151, 116, 98, 170, 70, 97, 103, 199, 4,
-                ]),
+                sig_string: "eaeeea529878fc861ac77a6e64ea3faea35b0804f655f1f7a6486ddd5b10530621ec7b8fdcf23ad66f7405ab2345d63b570d3855540693977462aa466167c704".to_string(),
             },
             TestCase {
                 height: 10,
                 whole_transaction: true,
-                signature: Signature([
-                    80, 194, 168, 49, 197, 125, 113, 187, 180, 205, 217, 28, 80, 170, 17, 159, 117,
-                    95, 245, 44, 133, 182, 149, 37, 77, 245, 228, 243, 251, 102, 25, 224, 181, 18,
-                    13, 31, 180, 96, 209, 73, 214, 13, 21, 228, 255, 248, 29, 107, 5, 186, 71, 10,
-                    176, 249, 214, 61, 188, 210, 216, 182, 75, 104, 129, 13,
-                ]),
+                sig_string: "50c2a831c57d71bbb4cdd91c50aa119f755ff52c85b695254df5e4f3fb6619e0b5120d1fb460d149d60d15e4fff81d6b05ba470ab0f9d63dbcd2d8b64b68810d".to_string(),
             },
-            TestCase {
+			TestCase {
                 height: 100,
                 whole_transaction: true,
-                signature: Signature([
-                    237, 185, 228, 3, 94, 93, 25, 75, 28, 201, 74, 170, 19, 48, 133, 12, 239, 114,
-                    143, 204, 146, 209, 29, 76, 12, 232, 214, 93, 122, 108, 232, 26, 218, 138, 57,
-                    227, 223, 58, 0, 82, 238, 69, 44, 52, 164, 63, 43, 19, 33, 123, 86, 122, 116,
-                    172, 10, 48, 238, 132, 227, 129, 133, 77, 148, 6,
-                ]),
+                sig_string: "edb9e4035e5d194b1cc94aaa1330850cef728fcc92d11d4c0ce8d65d7a6ce81ada8a39e3df3a0052ee452c34a43f2b13217b567a74ac0a30ee84e381854d9406".to_string(),
             },
             TestCase {
                 height: 1000,
                 whole_transaction: true,
-                signature: Signature([
-                    152, 254, 143, 177, 91, 215, 136, 166, 244, 60, 242, 79, 141, 227, 181, 117,
-                    86, 224, 29, 102, 248, 125, 210, 100, 157, 127, 248, 193, 226, 212, 138, 0,
-                    116, 104, 166, 150, 90, 149, 204, 211, 219, 144, 113, 40, 25, 126, 31, 14, 55,
-                    115, 85, 147, 23, 109, 97, 12, 202, 133, 151, 23, 234, 194, 253, 5,
-                ]),
+                sig_string: "98fe8fb15bd788a6f43cf24f8de3b57556e01d66f87dd2649d7ff8c1e2d48a007468a6965a95ccd3db907128197e1f0e37735593176d610cca859717eac2fd05".to_string(),
             },
             TestCase {
                 height: 10000,
                 whole_transaction: true,
-                signature: Signature([
-                    152, 254, 143, 177, 91, 215, 136, 166, 244, 60, 242, 79, 141, 227, 181, 117,
-                    86, 224, 29, 102, 248, 125, 210, 100, 157, 127, 248, 193, 226, 212, 138, 0,
-                    116, 104, 166, 150, 90, 149, 204, 211, 219, 144, 113, 40, 25, 126, 31, 14, 55,
-                    115, 85, 147, 23, 109, 97, 12, 202, 133, 151, 23, 234, 194, 253, 5,
-                ]),
+                sig_string: "98fe8fb15bd788a6f43cf24f8de3b57556e01d66f87dd2649d7ff8c1e2d48a007468a6965a95ccd3db907128197e1f0e37735593176d610cca859717eac2fd05".to_string(),
             },
             TestCase {
                 height: 1,
                 whole_transaction: false,
-                signature: Signature([
-                    181, 144, 210, 1, 156, 166, 8, 49, 142, 181, 56, 101, 211, 105, 252, 11, 201,
-                    110, 98, 25, 71, 131, 107, 123, 234, 40, 142, 178, 115, 198, 205, 108, 60, 26,
-                    9, 127, 170, 98, 99, 107, 25, 113, 138, 180, 229, 195, 37, 183, 36, 178, 210,
-                    21, 98, 217, 114, 185, 112, 100, 170, 121, 104, 207, 182, 1,
-                ]),
+                sig_string: "1d2f0cda9aafbe3ac87b0facf7fdf40c322b7413291fe63c3971f962755fe71c35e638a56eb3a26199a5dbc09244d8a2e4311fc263b34b793772e95e2b663b01".to_string(),
             },
             TestCase {
                 height: 10,
                 whole_transaction: false,
-                signature: Signature([
-                    136, 111, 242, 99, 13, 112, 234, 124, 181, 21, 23, 158, 192, 18, 187, 33, 149,
-                    13, 192, 196, 133, 226, 125, 225, 116, 234, 56, 179, 135, 166, 182, 9, 44, 41,
-                    122, 186, 233, 10, 113, 89, 3, 132, 97, 222, 23, 35, 106, 32, 233, 220, 194,
-                    83, 58, 200, 141, 187, 33, 205, 178, 98, 147, 149, 253, 9,
-                ]),
+                sig_string: "b0c3b86c36db9200ef6fecd31442652af277aa17859e895d8bf9ce517e93d1765a46eb13790aa6c06fa03df6d2be9032eaa965cccf79223c1fc7e8d4b8e3eb0a".to_string(),
             },
             TestCase {
                 height: 100,
                 whole_transaction: false,
-                signature: Signature([
-                    172, 255, 46, 255, 7, 203, 157, 222, 3, 90, 1, 63, 126, 149, 142, 90, 159, 179,
-                    94, 24, 159, 89, 48, 110, 9, 85, 249, 161, 129, 235, 104, 65, 116, 106, 139,
-                    241, 96, 111, 111, 185, 55, 111, 170, 177, 133, 225, 68, 113, 143, 119, 243,
-                    71, 130, 112, 179, 17, 20, 191, 89, 133, 69, 15, 137, 8,
-                ]),
+                sig_string: "c6e1f4fee7b9c1a141d6780e61af883a669127f5fa7569a7b69d1b88d434c0336690075b0a5048aba3be2b81751430f0229a3e6e7fcdd3c080ac7435a0c4500d".to_string(),
             },
             TestCase {
                 height: 1000,
                 whole_transaction: false,
-                signature: Signature([
-                    154, 185, 87, 199, 88, 179, 54, 250, 4, 244, 56, 175, 57, 117, 40, 183, 17,
-                    139, 220, 120, 68, 57, 5, 235, 114, 61, 246, 246, 67, 158, 110, 232, 5, 255,
-                    139, 236, 235, 76, 156, 218, 108, 110, 250, 96, 172, 78, 13, 143, 186, 221,
-                    207, 49, 14, 156, 193, 27, 182, 239, 101, 152, 215, 249, 55, 8,
-                ]),
+                sig_string: "c1547a6f8193329f00dd3409ef3f3d2df961cf606075eef28fe2d87ff446baa3ac7ae65e1773e40c5bef5f1d9452a6ec3d78579dea20b544c5f8f672ee96130f".to_string(),
             },
             TestCase {
                 height: 10000,
                 whole_transaction: false,
-                signature: Signature([
-                    154, 185, 87, 199, 88, 179, 54, 250, 4, 244, 56, 175, 57, 117, 40, 183, 17,
-                    139, 220, 120, 68, 57, 5, 235, 114, 61, 246, 246, 67, 158, 110, 232, 5, 255,
-                    139, 236, 235, 76, 156, 218, 108, 110, 250, 96, 172, 78, 13, 143, 186, 221,
-                    207, 49, 14, 156, 193, 27, 182, 239, 101, 152, 215, 249, 55, 8,
-                ]),
+                sig_string: "c1547a6f8193329f00dd3409ef3f3d2df961cf606075eef28fe2d87ff446baa3ac7ae65e1773e40c5bef5f1d9452a6ec3d78579dea20b544c5f8f672ee96130f".to_string(),
             },
         ];
 
@@ -476,10 +426,7 @@ mod tests {
 
             // covered fields are either the whole transaction or all fields
             let covered_fields = if tc.whole_transaction {
-                CoveredFields {
-                    whole_transaction: true,
-                    ..Default::default()
-                }
+                CoveredFields::whole_transaction()
             } else {
                 CoveredFields {
                     whole_transaction: false,
@@ -500,8 +447,7 @@ mod tests {
             let signature = unsigned_transaction
                 .sign(&state, &covered_fields, Hash256::default(), 1, 100, &key)
                 .unwrap();
-            let sig = Signature::new(signature.signature.clone().try_into().unwrap());
-            assert_eq!(sig, tc.signature);
+            assert_eq!(hex::encode(signature.signature.clone()), tc.sig_string, "height: {}", tc.height);
 
             // manually build the sig_hash and check the signature
             let sig_hash = if tc.whole_transaction {
@@ -514,7 +460,7 @@ mod tests {
                     .unwrap()
             };
             let sig = Signature::new(signature.signature.try_into().unwrap());
-            assert!(key.public_key().verify(sig_hash.as_ref(), &sig));
+            assert!(key.public_key().verify(sig_hash.as_ref(), &sig), "height: {}", tc.height);
         }
     }
 }
