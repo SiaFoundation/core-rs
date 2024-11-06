@@ -2,6 +2,12 @@
 name = "sia-sdk-derive"
 version = "0.0.1"
 edition = "2021"
+repository = "https://github.com/SiaFoundation/sia-rs"
+license = "MIT"
+description = "Macro implementations for sia-sdk"
+authors = ["The Sia Foundation"]
+categories = ["cryptography::cryptocurrencies"]
+keywords = ["sia", "decentralized", "blockchain", "depin", "storage"]
 
 [lib]
 proc-macro = true
