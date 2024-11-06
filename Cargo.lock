@@ -729,7 +729,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sia-sdk"
+name = "sia_sdk"
 version = "0.0.1"
 dependencies = [
  "base64",
@@ -744,13 +744,13 @@ dependencies = [
  "serde-big-array",
  "serde_json",
  "sha2",
- "sia-sdk-derive",
+ "sia_sdk_derive",
  "thiserror",
  "time",
 ]
 
 [[package]]
-name = "sia-sdk-derive"
+name = "sia_sdk_derive"
 version = "0.0.1"
 dependencies = [
  "proc-macro2",
