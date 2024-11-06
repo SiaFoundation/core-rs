@@ -167,6 +167,12 @@ impl AsRef<[u8; 64]> for Signature {
     }
 }
 
+impl From<[u8; 64]> for Signature {
+    fn from(buf: [u8; 64]) -> Self {
+        Signature(buf)
+    }
+}
+
 impl fmt::Display for Signature {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", hex::encode(self.0))
