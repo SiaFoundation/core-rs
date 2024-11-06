@@ -54,7 +54,9 @@ impl<'de> Deserialize<'de> for Leaf {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, SiaEncode, V1SiaEncode, SiaDecode, V1SiaDecode)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Default, SiaEncode, V1SiaEncode, SiaDecode, V1SiaDecode,
+)]
 pub struct Hash256([u8; 32]);
 
 impl serde::Serialize for Hash256 {
@@ -130,12 +132,6 @@ impl AsRef<[u8; 32]> for Hash256 {
 impl AsRef<[u8]> for Hash256 {
     fn as_ref(&self) -> &[u8] {
         &self.0
-    }
-}
-
-impl Default for Hash256 {
-    fn default() -> Self {
-        Hash256([0; 32])
     }
 }
 
