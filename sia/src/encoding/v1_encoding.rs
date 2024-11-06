@@ -52,26 +52,26 @@ impl<T: V1SiaEncodable> V1SiaEncodable for [T] {
 }
 
 impl<T: V1SiaEncodable> V1SiaEncodable for Option<T> {
-	fn encode_v1<W: Write>(&self, w: &mut W) -> Result<()> {
-		match self {
-			Some(v) => {
-				true.encode_v1(w)?;
-				v.encode_v1(w)
-			}
-			None => false.encode_v1(w),
-		}
-	}
+    fn encode_v1<W: Write>(&self, w: &mut W) -> Result<()> {
+        match self {
+            Some(v) => {
+                true.encode_v1(w)?;
+                v.encode_v1(w)
+            }
+            None => false.encode_v1(w),
+        }
+    }
 }
 
-impl <T: V1SiaDecodable> V1SiaDecodable for Option<T> {
-	fn decode_v1<R: Read>(r: &mut R) -> Result<Self> {
-		let has_value = bool::decode_v1(r)?;
-		if has_value {
-			Ok(Some(T::decode_v1(r)?))
-		} else {
-			Ok(None)
-		}
-	}
+impl<T: V1SiaDecodable> V1SiaDecodable for Option<T> {
+    fn decode_v1<R: Read>(r: &mut R) -> Result<Self> {
+        let has_value = bool::decode_v1(r)?;
+        if has_value {
+            Ok(Some(T::decode_v1(r)?))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 macro_rules! impl_sia_numeric {

@@ -5,7 +5,8 @@ use crate::encoding::{SiaDecodable, SiaDecode, SiaEncodable, SiaEncode};
 use crate::{ChainIndex, Hash256, HexParseError};
 use base64::prelude::*;
 use ed25519_dalek::{Signature as ED25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
-use serde::{de::Error, Deserialize, Serialize};
+use serde::de::Error;
+use serde::{Deserialize, Serialize};
 
 /// An ed25519 public key that can be used to verify a signature
 #[derive(Debug, PartialEq, Clone, Copy, SiaEncode, SiaDecode)]
@@ -232,15 +233,13 @@ impl SigningState {
 mod tests {
     use std::vec;
 
-    use crate::{
-        transactions::{
-            CoveredFields, FileContract, FileContractID, FileContractRevision, SiacoinInput,
-            SiacoinOutput, SiafundInput, SiafundOutput, StorageProof, Transaction,
-            TransactionSignature,
-        },
-        unlock_conditions::UnlockConditions,
-        Address, Currency, Leaf,
+    use crate::transactions::{
+        CoveredFields, FileContract, FileContractID, FileContractRevision, SiacoinInput,
+        SiacoinOutput, SiafundInput, SiafundOutput, StorageProof, Transaction,
+        TransactionSignature,
     };
+    use crate::unlock_conditions::UnlockConditions;
+    use crate::{Address, Currency, Leaf};
 
     use super::*;
 

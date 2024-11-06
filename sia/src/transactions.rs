@@ -4,8 +4,7 @@ use crate::encoding::{
 use crate::signing::{PrivateKey, SigningState};
 use crate::specifier::{specifier, Specifier};
 use crate::unlock_conditions::UnlockConditions;
-use crate::Hash256;
-use crate::{encoding, Address, Currency, Leaf};
+use crate::{encoding, Address, Currency, Hash256, Leaf};
 use blake2b_simd::Params;
 use serde::{Deserialize, Serialize};
 
@@ -363,7 +362,8 @@ impl Transaction {
 
 // Create a helper module for base64 serialization
 mod base64 {
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine;
     use serde::{Deserialize, Deserializer, Serializer};
 
     pub fn serialize<S: Serializer>(v: &[u8], s: S) -> Result<S::Ok, S::Error> {

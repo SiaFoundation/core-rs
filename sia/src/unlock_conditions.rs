@@ -5,8 +5,7 @@ use crate::encoding::{
 use crate::merkle::{Accumulator, LEAF_HASH_PREFIX};
 use crate::signing::PublicKey;
 use crate::specifier::{specifier, Specifier};
-use crate::Address;
-use crate::HexParseError;
+use crate::{Address, HexParseError};
 use blake2b_simd::Params;
 use core::fmt;
 use serde::de::Error;
