@@ -1,10 +1,24 @@
+use crate::encoding::{
+    SiaDecodable, SiaDecode, SiaEncodable, SiaEncode, V1SiaDecodable, V1SiaDecode, V1SiaEncodable,
+    V1SiaEncode,
+};
 use core::{fmt, str};
-
 use serde::{Deserialize, Serialize};
 
 pub const SPECIFIER_SIZE: usize = 16;
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    SiaEncode,
+    V1SiaEncode,
+    V1SiaDecode,
+    SiaDecode,
+)]
 pub struct Specifier([u8; SPECIFIER_SIZE]);
 
 impl Specifier {
@@ -14,6 +28,17 @@ impl Specifier {
 
     pub fn as_bytes(&self) -> &[u8; SPECIFIER_SIZE] {
         &self.0
+    }
+}
+
+impl From<&str> for Specifier {
+    fn from(s: &str) -> Self {
+        let mut buf = [0; SPECIFIER_SIZE];
+        let src = s.as_bytes();
+        let len = src.len();
+        let index = len.min(SPECIFIER_SIZE);
+        buf[..index].copy_from_slice(&src[..index]);
+        Self(buf)
     }
 }
 
@@ -48,7 +73,6 @@ macro_rules! specifier {
         $crate::specifier::Specifier::new(buf)
     }};
 }
-
 pub(crate) use specifier;
 
 #[cfg(test)]
