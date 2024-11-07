@@ -5,14 +5,14 @@ use crate::encoding::{
 use crate::signing::{PrivateKey, SigningState};
 use crate::specifier::{specifier, Specifier};
 use crate::unlock_conditions::UnlockConditions;
-use crate::{encoding, Address, Currency, Hash256, Leaf};
+use crate::{encoding, Address, Currency, Hash256, ImplHashID, Leaf};
 use blake2b_simd::Params;
 use serde::{Deserialize, Serialize};
 
-pub type SiacoinOutputID = Hash256;
-pub type SiafundOutputID = Hash256;
-pub type FileContractID = Hash256;
-pub type TransactionID = Hash256;
+ImplHashID!(SiacoinOutputID);
+ImplHashID!(SiafundOutputID);
+ImplHashID!(FileContractID);
+ImplHashID!(TransactionID);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, V1SiaEncode, V1SiaDecode)]
 #[serde(rename_all = "camelCase")]
