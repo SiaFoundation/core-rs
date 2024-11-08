@@ -51,9 +51,9 @@ impl PublicKey {
         PublicKey(buf)
     }
 
-    pub fn verify(&self, msg: &[u8], signature: &Signature) -> bool {
+    pub fn verify(&self, sig_hash: &Hash256, signature: &Signature) -> bool {
         let pk = VerifyingKey::from_bytes(&self.0).unwrap();
-        pk.verify(msg, &ED25519Signature::from_bytes(signature.as_ref()))
+        pk.verify(sig_hash.as_ref(), &ED25519Signature::from_bytes(signature.as_ref()))
             .is_ok()
     }
 }
@@ -80,9 +80,9 @@ impl PrivateKey {
         PublicKey::new(buf)
     }
 
-    pub fn sign(&self, buf: &[u8]) -> Signature {
+    pub fn sign_hash(&self, h: &Hash256) -> Signature {
         let sk = SigningKey::from_bytes(&self.0[..32].try_into().unwrap());
-        Signature::new(sk.sign(buf).to_bytes())
+        Signature::new(sk.sign(h.as_ref()).to_bytes())
     }
 
     pub fn as_bytes(&self) -> &[u8] {
@@ -455,7 +455,7 @@ mod tests {
             };
             let sig = Signature::new(signature.signature.try_into().unwrap());
             assert!(
-                key.public_key().verify(sig_hash.as_ref(), &sig),
+                key.public_key().verify(&sig_hash, &sig),
                 "height: {}",
                 tc.height
             );

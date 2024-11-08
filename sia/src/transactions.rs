@@ -355,7 +355,7 @@ impl Transaction {
             public_key_index,
             timelock,
             covered_fields: covered_fields.clone(),
-            signature: private_key.sign(sig_hash.as_ref()).data().to_vec(),
+            signature: private_key.sign_hash(&sig_hash).data().to_vec(),
         })
     }
 
