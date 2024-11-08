@@ -53,8 +53,11 @@ impl PublicKey {
 
     pub fn verify(&self, sig_hash: &Hash256, signature: &Signature) -> bool {
         let pk = VerifyingKey::from_bytes(&self.0).unwrap();
-        pk.verify(sig_hash.as_ref(), &ED25519Signature::from_bytes(signature.as_ref()))
-            .is_ok()
+        pk.verify(
+            sig_hash.as_ref(),
+            &ED25519Signature::from_bytes(signature.as_ref()),
+        )
+        .is_ok()
     }
 }
 

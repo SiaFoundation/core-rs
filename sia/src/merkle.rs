@@ -74,5 +74,5 @@ pub fn sum_node(params: &Params, left: &Hash256, right: &Hash256) -> Hash256 {
         .update(right.as_ref())
         .finalize();
 
-	h.into()
+    h.into()
 }
