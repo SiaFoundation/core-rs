@@ -374,6 +374,15 @@ pub struct Transaction {
     pub miner_fee: Currency,
 }
 
+/// BlockData contains the additional V2 data included in a block.
+#[derive(Debug, PartialEq, SiaEncode, SiaDecode, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockData {
+    pub height: u64,
+    pub commitment: Hash256,
+    pub transactions: Vec<Transaction>,
+}
+
 #[cfg(test)]
 mod tests {
     use crate::consensus::{

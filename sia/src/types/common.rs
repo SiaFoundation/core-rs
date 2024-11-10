@@ -138,14 +138,7 @@ impl fmt::Display for ChainIndex {
     }
 }
 
-#[derive(Debug, PartialEq, SiaEncode, SiaDecode, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct V2BlockData {
-    pub height: u64,
-    pub commitment: Hash256,
-    pub transactions: Vec<v2::Transaction>,
-}
-
+/// A Block is a collection of transactions
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Block {
@@ -155,7 +148,7 @@ pub struct Block {
     pub miner_payouts: Vec<SiacoinOutput>,
     pub transactions: Vec<v1::Transaction>,
 
-    pub v2: Option<V2BlockData>,
+    pub v2: Option<v2::BlockData>,
 }
 
 impl V1SiaEncodable for Block {
@@ -200,7 +193,7 @@ impl SiaDecodable for Block {
             timestamp: OffsetDateTime::decode(r)?,
             miner_payouts: Vec::<SiacoinOutput>::decode_v1(r)?,
             transactions: Vec::<v1::Transaction>::decode_v1(r)?,
-            v2: Option::<V2BlockData>::decode(r)?,
+            v2: Option::<v2::BlockData>::decode(r)?,
         })
     }
 }
@@ -303,6 +296,8 @@ impl fmt::Display for Address {
     }
 }
 
+/// A SiacoinOutput is a Siacoin UTXO that can be spent using the unlock conditions
+/// for Address
 #[derive(
     Debug, PartialEq, Serialize, Deserialize, SiaEncode, SiaDecode, V1SiaEncode, V1SiaDecode,
 )]
@@ -312,6 +307,8 @@ pub struct SiacoinOutput {
     pub address: Address,
 }
 
+/// A SiafundOutput is a Siafund UTXO that can be spent using the unlock conditions
+/// for Address
 #[derive(Debug, PartialEq, Serialize, Deserialize, SiaEncode, SiaDecode)]
 #[serde(rename_all = "camelCase")]
 pub struct SiafundOutput {
@@ -340,6 +337,7 @@ impl V1SiaDecodable for SiafundOutput {
     }
 }
 
+/// A Leaf is a 64-byte piece of data that is stored in a Merkle tree.
 #[derive(Debug, PartialEq, Clone, SiaEncode, V1SiaEncode, SiaDecode, V1SiaDecode)]
 pub struct Leaf([u8; 64]);
 
@@ -383,6 +381,10 @@ pub struct StateElement {
     pub merkle_proof: Vec<Hash256>,
 }
 
+/// address is a helper macro to create an Address from a string literal.
+/// The string literal must be a valid 76-character hex-encoded string.
+/// This is not exported outside of the crate because the address checksum
+/// is not validated, it is assumed to be correct.
 macro_rules! address {
     ($text:expr) => {{
         const fn decode_hex_char(c: u8) -> Option<u8> {
