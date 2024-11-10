@@ -1,3 +1,4 @@
+pub mod consensus;
 pub mod encoding;
 pub mod rhp;
 pub mod seed;

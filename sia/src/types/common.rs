@@ -2,12 +2,14 @@ use core::fmt;
 
 use blake2b_simd::Params;
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 
 use crate::encoding::{
     self, SiaDecodable, SiaDecode, SiaEncodable, SiaEncode, V1SiaDecodable, V1SiaDecode,
     V1SiaEncodable, V1SiaEncode,
 };
 use crate::types::currency::Currency;
+use crate::types::{v1, v2};
 
 // Macro to implement types used as identifiers which are 32 byte hashes and are
 // serialized with a prefix
@@ -47,6 +49,10 @@ macro_rules! ImplHashID {
         }
 
         impl $name {
+            pub const fn new(b: [u8; 32]) -> Self {
+                Self(b)
+            }
+
             // Example method that might be used in serialization/deserialization
             pub fn parse_string(s: &str) -> Result<Self, $crate::types::HexParseError> {
                 let s = match s.split_once(':') {
@@ -132,6 +138,73 @@ impl fmt::Display for ChainIndex {
     }
 }
 
+#[derive(Debug, PartialEq, SiaEncode, SiaDecode, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct V2BlockData {
+    pub height: u64,
+    pub commitment: Hash256,
+    pub transactions: Vec<v2::Transaction>,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Block {
+    pub parent_id: BlockID,
+    pub nonce: u64,
+    pub timestamp: OffsetDateTime,
+    pub miner_payouts: Vec<SiacoinOutput>,
+    pub transactions: Vec<v1::Transaction>,
+
+    pub v2: Option<V2BlockData>,
+}
+
+impl V1SiaEncodable for Block {
+    fn encode_v1<W: std::io::Write>(&self, w: &mut W) -> encoding::Result<()> {
+        self.parent_id.encode(w)?;
+        self.nonce.encode(w)?;
+        self.timestamp.encode(w)?;
+        self.miner_payouts.encode_v1(w)?;
+        self.transactions.encode_v1(w)
+    }
+}
+
+impl V1SiaDecodable for Block {
+    fn decode_v1<R: std::io::Read>(r: &mut R) -> encoding::Result<Self> {
+        Ok(Block {
+            parent_id: BlockID::decode(r)?,
+            nonce: u64::decode(r)?,
+            timestamp: OffsetDateTime::decode(r)?,
+            miner_payouts: Vec::<SiacoinOutput>::decode_v1(r)?,
+            transactions: Vec::<v1::Transaction>::decode_v1(r)?,
+            v2: None,
+        })
+    }
+}
+
+impl SiaEncodable for Block {
+    fn encode<W: std::io::Write>(&self, w: &mut W) -> encoding::Result<()> {
+        self.parent_id.encode(w)?;
+        self.nonce.encode(w)?;
+        self.timestamp.encode(w)?;
+        self.miner_payouts.encode_v1(w)?;
+        self.transactions.encode_v1(w)?;
+        self.v2.encode(w)
+    }
+}
+
+impl SiaDecodable for Block {
+    fn decode<R: std::io::Read>(r: &mut R) -> encoding::Result<Self> {
+        Ok(Block {
+            parent_id: BlockID::decode(r)?,
+            nonce: u64::decode(r)?,
+            timestamp: OffsetDateTime::decode(r)?,
+            miner_payouts: Vec::<SiacoinOutput>::decode_v1(r)?,
+            transactions: Vec::<v1::Transaction>::decode_v1(r)?,
+            v2: Option::<V2BlockData>::decode(r)?,
+        })
+    }
+}
+
 /// encapsulates the various errors that can occur when parsing a Sia object
 /// from a string
 #[derive(Debug, PartialEq)]
@@ -144,7 +217,7 @@ pub enum HexParseError {
 }
 
 /// An address that can be used to receive UTXOs
-#[derive(Debug, PartialEq, Clone, SiaEncode, V1SiaEncode, SiaDecode, V1SiaDecode)]
+#[derive(Default, Debug, PartialEq, Clone, SiaEncode, V1SiaEncode, SiaDecode, V1SiaDecode)]
 pub struct Address([u8; 32]);
 
 impl<'de> Deserialize<'de> for Address {
@@ -167,7 +240,7 @@ impl Serialize for Address {
 }
 
 impl Address {
-    pub fn new(addr: [u8; 32]) -> Address {
+    pub(crate) const fn new(addr: [u8; 32]) -> Address {
         Address(addr)
     }
 
@@ -310,9 +383,55 @@ pub struct StateElement {
     pub merkle_proof: Vec<Hash256>,
 }
 
+macro_rules! address {
+    ($text:expr) => {{
+        const fn decode_hex_char(c: u8) -> Option<u8> {
+            match c {
+                b'0'..=b'9' => Some(c - b'0'),
+                b'a'..=b'f' => Some(c - b'a' + 10),
+                b'A'..=b'F' => Some(c - b'A' + 10),
+                _ => None,
+            }
+        }
+
+        const fn decode_hex_pair(hi: u8, lo: u8) -> Option<u8> {
+            let hi = decode_hex_char(hi);
+            let lo = decode_hex_char(lo);
+            match ((hi, lo)) {
+                (Some(hi), Some(lo)) => Some(hi << 4 | lo),
+                _ => None,
+            }
+        }
+
+        let src = $text.as_bytes();
+        let len = src.len();
+        assert!(len == 76, "invalid address length");
+        let mut data = [0u8; 32];
+        let mut i = 0;
+        while i < 64 {
+            let pair = decode_hex_pair(src[i], src[i + 1]);
+            match pair {
+                Some(byte) => data[i / 2] = byte,
+                None => assert!(false, "invalid hex character"),
+            }
+            i += 2;
+        }
+        Address::new(data)
+    }};
+}
+pub(crate) use address;
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_address_macro() {
+        const ADDRESS: &str =
+            "5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34";
+        let s = address!(ADDRESS);
+        assert_eq!(s.to_string(), ADDRESS);
+    }
 
     #[test]
     fn test_serialize_hash256() {

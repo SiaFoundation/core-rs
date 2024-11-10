@@ -11,9 +11,12 @@ pub fn derive_sia_encode(input: TokenStream) -> TokenStream {
         Data::Struct(data) => {
             let fields = match &data.fields {
                 Fields::Named(fields) => {
-                    let encodes = fields.named.iter().map(|f| {
-                        let name = &f.ident;
-                        quote! { self.#name.encode(w)?; }
+                    let encodes = fields.named.iter().filter_map(|f| match f.vis {
+                        syn::Visibility::Public(_) => {
+                            let name = &f.ident;
+                            Some(quote! { self.#name.encode(w)?; })
+                        }
+                        _ => None,
                     });
                     quote! { #(#encodes)* }
                 }
@@ -55,10 +58,13 @@ pub fn derive_sia_decode(input: TokenStream) -> TokenStream {
         Data::Struct(data) => {
             let fields = match &data.fields {
                 Fields::Named(fields) => {
-                    let decodes = fields.named.iter().map(|f| {
-                        let name = &f.ident;
-                        let ty = &f.ty;
-                        quote! { #name: <#ty>::decode(r)?, }
+                    let decodes = fields.named.iter().filter_map(|f| match f.vis {
+                        syn::Visibility::Public(_) => {
+                            let name = &f.ident;
+                            let ty = &f.ty;
+                            Some(quote! { #name: <#ty>::decode(r)?, })
+                        }
+                        _ => None,
                     });
                     quote! {
                         Ok(Self {

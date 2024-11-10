@@ -1,15 +1,20 @@
 use core::fmt;
+use std::ops::Deref;
 
 use blake2b_simd::Params;
+use num_bigint::BigInt;
+use num_rational::Ratio;
+use num_traits::{FromPrimitive, ToPrimitive};
 use serde::de::Error;
 use serde::{Deserialize, Serialize};
 
+use crate::consensus::ChainState;
 use crate::encoding::{
     self, SiaDecodable, SiaDecode, SiaEncodable, SiaEncode, V1SiaDecodable, V1SiaDecode,
     V1SiaEncodable, V1SiaEncode,
 };
 use crate::merkle::{Accumulator, LEAF_HASH_PREFIX};
-use crate::signing::{PrivateKey, PublicKey, SigningState};
+use crate::signing::{PrivateKey, PublicKey};
 use crate::types::{specifier, Specifier};
 
 use super::currency::Currency;
@@ -179,8 +184,21 @@ pub struct FileContract {
     pub payout: Currency,
     pub valid_proof_outputs: Vec<SiacoinOutput>,
     pub missed_proof_outputs: Vec<SiacoinOutput>,
-    pub unlock_hash: Hash256,
+    pub unlock_hash: Address,
     pub revision_number: u64,
+}
+
+impl FileContract {
+    pub fn tax(&self, cs: &ChainState) -> Currency {
+        let payout = BigInt::from_u128(*self.payout.deref()).unwrap();
+        let tax = if cs.child_height() < cs.network.hardfork_tax.height {
+            let tax = Ratio::from(payout) * Ratio::from_float(0.039).unwrap();
+            tax.numer() / tax.denom()
+        } else {
+            payout * 39 / 1000
+        };
+        Currency::new((&tax - &tax % cs.siafund_count()).to_u128().unwrap())
+    }
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, V1SiaEncode, V1SiaDecode)]
@@ -197,7 +215,7 @@ pub struct FileContractRevision {
     pub window_end: u64,
     pub valid_proof_outputs: Vec<SiacoinOutput>,
     pub missed_proof_outputs: Vec<SiacoinOutput>,
-    pub unlock_hash: Hash256,
+    pub unlock_hash: Address,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, V1SiaEncode, V1SiaDecode)]
@@ -298,7 +316,7 @@ impl Transaction {
 
     pub(crate) fn whole_sig_hash(
         &self,
-        chain: &SigningState,
+        cs: &ChainState,
         parent_id: &Hash256,
         public_key_index: u64,
         timelock: u64,
@@ -308,7 +326,7 @@ impl Transaction {
 
         state.update(&(self.siacoin_inputs.len() as u64).to_le_bytes());
         for input in self.siacoin_inputs.iter() {
-            state.update(chain.replay_prefix());
+            state.update(cs.replay_prefix());
             input.encode_v1(&mut state)?;
         }
 
@@ -319,7 +337,7 @@ impl Transaction {
 
         state.update(&(self.siafund_inputs.len() as u64).to_le_bytes());
         for input in self.siafund_inputs.iter() {
-            state.update(chain.replay_prefix());
+            state.update(cs.replay_prefix());
             input.encode_v1(&mut state)?;
         }
 
@@ -345,7 +363,7 @@ impl Transaction {
 
     pub(crate) fn partial_sig_hash(
         &self,
-        chain: &SigningState,
+        cs: &ChainState,
         covered_fields: &CoveredFields,
     ) -> Result<Hash256, encoding::Error> {
         let mut state = Params::new().hash_length(32).to_state();
@@ -356,7 +374,7 @@ impl Transaction {
                     "siacoin_inputs index out of bounds".to_string(),
                 ));
             }
-            state.update(chain.replay_prefix());
+            state.update(cs.replay_prefix());
             self.siacoin_inputs[i].encode_v1(&mut state)?;
         }
 
@@ -402,7 +420,7 @@ impl Transaction {
                     "siafund_inputs index out of bounds".to_string(),
                 ));
             }
-            state.update(chain.replay_prefix());
+            state.update(cs.replay_prefix());
             self.siafund_inputs[i].encode_v1(&mut state)?;
         }
 
@@ -446,7 +464,7 @@ impl Transaction {
 
     pub fn sign(
         &self,
-        state: &SigningState,
+        cs: &ChainState,
         covered_fields: &CoveredFields,
         parent_id: Hash256,
         public_key_index: u64,
@@ -455,14 +473,14 @@ impl Transaction {
     ) -> Result<TransactionSignature, encoding::Error> {
         let sig_hash = if covered_fields.whole_transaction {
             self.whole_sig_hash(
-                state,
+                cs,
                 &parent_id,
                 public_key_index,
                 timelock,
                 &covered_fields.signatures,
             )
         } else {
-            self.partial_sig_hash(state, covered_fields)
+            self.partial_sig_hash(cs, covered_fields)
         }?;
 
         Ok(TransactionSignature {
@@ -505,12 +523,17 @@ impl Transaction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::consensus::{
+        HardforkASIC, HardforkDevAddr, HardforkFoundation, HardforkOak, HardforkStorageProof,
+        HardforkTax, HardforkV2, Network, State,
+    };
     use crate::seed::Seed;
-    use crate::signing::{NetworkHardforks, PrivateKey, PublicKey, Signature};
+    use crate::signing::{PrivateKey, PublicKey, Signature};
     use crate::types::{BlockID, ChainIndex};
     use serde::de::DeserializeOwned;
     use std::fmt::Debug;
     use std::vec;
+    use time::{Duration, OffsetDateTime};
 
     /// test_serialize_json is a helper to test serialization and deserialization of a struct to and from JSON.
     fn test_serialize_json<S: Serialize + DeserializeOwned + Debug + PartialEq>(
@@ -753,7 +776,7 @@ mod tests {
                     0, 0, 0, 0, 0, 0,
                 ]),
             }],
-            unlock_hash: Hash256::from([
+            unlock_hash: Address::from([
                 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0,
             ]),
@@ -772,7 +795,7 @@ mod tests {
         ]);
         test_serialize_v1(&contract, binary_str.as_str());
 
-        let json_str = "{\"filesize\":1,\"fileMerkleRoot\":\"0101010000000000000000000000000000000000000000000000000000000000\",\"windowStart\":2,\"windowEnd\":3,\"payout\":\"456\",\"validProofOutputs\":[{\"value\":\"789\",\"address\":\"02020200000000000000000000000000000000000000000000000000000000008749787b31db\"}],\"missedProofOutputs\":[{\"value\":\"101112\",\"address\":\"0303030000000000000000000000000000000000000000000000000000000000c596d559a239\"}],\"unlockHash\":\"0404040000000000000000000000000000000000000000000000000000000000\",\"revisionNumber\":4}";
+        let json_str = "{\"filesize\":1,\"fileMerkleRoot\":\"0101010000000000000000000000000000000000000000000000000000000000\",\"windowStart\":2,\"windowEnd\":3,\"payout\":\"456\",\"validProofOutputs\":[{\"value\":\"789\",\"address\":\"02020200000000000000000000000000000000000000000000000000000000008749787b31db\"}],\"missedProofOutputs\":[{\"value\":\"101112\",\"address\":\"0303030000000000000000000000000000000000000000000000000000000000c596d559a239\"}],\"unlockHash\":\"04040400000000000000000000000000000000000000000000000000000000006c604f10c928\",\"revisionNumber\":4}";
         test_serialize_json(&contract, json_str);
     }
 
@@ -814,7 +837,7 @@ mod tests {
                 .into()],
                 1,
             ),
-            unlock_hash: Hash256::from([
+            unlock_hash: Address::from([
                 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0,
             ]),
@@ -837,7 +860,7 @@ mod tests {
         ]);
         test_serialize_v1(&revision, binary_str.as_str());
 
-        let json_str = "{\"parentID\":\"0908070000000000000000000000000000000000000000000000000000000000\",\"unlockConditions\":{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1},\"revisionNumber\":4,\"filesize\":1,\"fileMerkleRoot\":\"0101010000000000000000000000000000000000000000000000000000000000\",\"windowStart\":2,\"windowEnd\":3,\"validProofOutputs\":[{\"value\":\"789\",\"address\":\"02020200000000000000000000000000000000000000000000000000000000008749787b31db\"}],\"missedProofOutputs\":[{\"value\":\"789\",\"address\":\"0303030000000000000000000000000000000000000000000000000000000000c596d559a239\"}],\"unlockHash\":\"0404040000000000000000000000000000000000000000000000000000000000\"}";
+        let json_str = "{\"parentID\":\"0908070000000000000000000000000000000000000000000000000000000000\",\"unlockConditions\":{\"timelock\":123,\"publicKeys\":[\"ed25519:9aac1ffb1cfd1079a8c6c87b47da1d567e35b97234993c288c1ad0db1d1ce1b6\"],\"signaturesRequired\":1},\"revisionNumber\":4,\"filesize\":1,\"fileMerkleRoot\":\"0101010000000000000000000000000000000000000000000000000000000000\",\"windowStart\":2,\"windowEnd\":3,\"validProofOutputs\":[{\"value\":\"789\",\"address\":\"02020200000000000000000000000000000000000000000000000000000000008749787b31db\"}],\"missedProofOutputs\":[{\"value\":\"789\",\"address\":\"0303030000000000000000000000000000000000000000000000000000000000c596d559a239\"}],\"unlockHash\":\"04040400000000000000000000000000000000000000000000000000000000006c604f10c928\"}";
         test_serialize_json(&revision, json_str);
     }
 
@@ -917,17 +940,55 @@ mod tests {
 
     #[test]
     fn test_transaction_sign() {
-        let state = SigningState {
-            index: ChainIndex {
-                height: 0,
-                id: BlockID::default(),
+        let cs = ChainState {
+            state: State {
+                index: ChainIndex {
+                    height: 1,
+                    id: BlockID::default(),
+                },
+                prev_timestamps: [OffsetDateTime::UNIX_EPOCH; 11],
+                depth: BlockID::default(),
+                child_target: BlockID::default(),
+                siafund_pool: Currency::new(0),
+                oak_time: Duration::new(0, 0),
+                oak_target: BlockID::default(),
+                foundation_primary_address: Address::new([0u8; 32]),
+                foundation_failsafe_address: Address::new([0u8; 32]),
             },
-            median_timestamp: time::OffsetDateTime::now_utc(),
-            hardforks: NetworkHardforks {
-                asic_height: 0,
-                foundation_height: 0,
-                v2_allow_height: 1000,
-                v2_require_height: 1000,
+            network: Network {
+                name: "test",
+                initial_coinbase: Currency::new(0),
+                minimum_coinbase: Currency::new(0),
+                initial_target: BlockID::default(),
+                block_interval: Duration::new(1, 0),
+                maturity_delay: 0,
+                hardfork_dev_addr: HardforkDevAddr {
+                    height: 0,
+                    old_address: Address::new([0u8; 32]),
+                    new_address: Address::new([0u8; 32]),
+                },
+                hardfork_tax: HardforkTax { height: 10 },
+                hardfork_storage_proof: HardforkStorageProof { height: 0 },
+                hardfork_asic: HardforkASIC {
+                    height: 0,
+                    oak_time: Duration::new(0, 0),
+                    oak_target: BlockID::default(),
+                },
+                hardfork_oak: HardforkOak {
+                    height: 0,
+                    fix_height: 0,
+                    genesis_timestamp: OffsetDateTime::UNIX_EPOCH,
+                },
+                hardfork_foundation: HardforkFoundation {
+                    height: 0,
+                    primary_address: Address::new([0u8; 32]),
+                    failsafe_address: Address::new([0u8; 32]),
+                },
+                hardfork_v2: HardforkV2 {
+                    // test was made for pre-v2
+                    allow_height: 100,
+                    require_height: 100,
+                },
             },
         };
         let pk = PrivateKey::from_seed(&[
@@ -965,7 +1026,7 @@ mod tests {
         for (txn, expected) in test_cases {
             let sig = txn
                 .sign(
-                    &state,
+                    &cs,
                     &CoveredFields::whole_transaction(),
                     Hash256::from(<SiacoinOutputID as Into<[u8; 32]>>::into(
                         txn.siacoin_inputs[0].parent_id,
@@ -1230,6 +1291,216 @@ mod tests {
             let addr: Address = UnlockConditions::standard_unlock_conditions(pk).address();
 
             assert_eq!(addr, expected, "index {}", i);
+        }
+    }
+
+    #[test]
+    fn test_file_contract_tax() {
+        struct TestCase {
+            payout: Currency,
+            prefork: Currency,
+            postfork: Currency,
+        }
+        let test_cases = vec![
+            TestCase {
+                payout: Currency::new(0),
+                prefork: Currency::new(0),
+                postfork: Currency::new(0),
+            },
+            TestCase {
+                payout: Currency::new(1),
+                prefork: Currency::new(0),
+                postfork: Currency::new(0),
+            },
+            TestCase {
+                payout: Currency::new(2),
+                prefork: Currency::new(0),
+                postfork: Currency::new(0),
+            },
+            TestCase {
+                payout: Currency::new(340282366920938463463374607431768211455),
+                prefork: Currency::new(13271012309916600075071609689838960000),
+                postfork: Currency::new(13271012309916600075071609689838960000),
+            },
+            TestCase {
+                payout: Currency::new(595540520000000000000000000000000),
+                prefork: Currency::new(23226080280000000000000000000000),
+                postfork: Currency::new(23226080280000000000000000000000),
+            },
+            TestCase {
+                payout: Currency::new(103983762872653413852682180916164570605),
+                prefork: Currency::new(4055366752033483140254605055730410000),
+                postfork: Currency::new(4055366752033483140254605055730410000),
+            },
+            TestCase {
+                payout: Currency::new(3827764528000000000000000000000000),
+                prefork: Currency::new(149282816592000000000000000000000),
+                postfork: Currency::new(149282816592000000000000000000000),
+            },
+            TestCase {
+                payout: Currency::new(216196544861605368913933682930139323360),
+                prefork: Currency::new(8431665249602609387643413634275430000),
+                postfork: Currency::new(8431665249602609387643413634275430000),
+            },
+            TestCase {
+                payout: Currency::new(2630651610000000000000000000000000),
+                prefork: Currency::new(102595412790000000000000000000000),
+                postfork: Currency::new(102595412790000000000000000000000),
+            },
+            TestCase {
+                payout: Currency::new(242035606817835258338180817515298863866),
+                prefork: Currency::new(9439388665895575075189051883096650000),
+                postfork: Currency::new(9439388665895575075189051883096650000),
+            },
+            TestCase {
+                payout: Currency::new(3830155529000000000000000000000000),
+                prefork: Currency::new(149376065631000000000000000000000),
+                postfork: Currency::new(149376065631000000000000000000000),
+            },
+            TestCase {
+                payout: Currency::new(126852058180828682198189558142776852406),
+                prefork: Currency::new(4947230269052318605729392767568290000),
+                postfork: Currency::new(4947230269052318605729392767568290000),
+            },
+            TestCase {
+                payout: Currency::new(3497644816000000000000000000000000),
+                prefork: Currency::new(136408147824000000000000000000000),
+                postfork: Currency::new(136408147824000000000000000000000),
+            },
+            TestCase {
+                payout: Currency::new(202288428857506739014982837533616200189),
+                prefork: Currency::new(7889248725442762821584330663811030000),
+                postfork: Currency::new(7889248725442762821584330663811030000),
+            },
+            TestCase {
+                payout: Currency::new(3717108920000000000000000000000000),
+                prefork: Currency::new(144967247880000000000000000000000),
+                postfork: Currency::new(144967247880000000000000000000000),
+            },
+            TestCase {
+                payout: Currency::new(319915558118289110319073160920214552278),
+                prefork: Currency::new(12476706766613275302443853275888360000),
+                postfork: Currency::new(12476706766613275302443853275888360000),
+            },
+            TestCase {
+                payout: Currency::new(2205536583000000000000000000000000),
+                prefork: Currency::new(86015926737000000000000000000000),
+                postfork: Currency::new(86015926737000000000000000000000),
+            },
+            TestCase {
+                payout: Currency::new(138040906509763116024244911687441931808),
+                prefork: Currency::new(5383595353880761524945551555810230000),
+                postfork: Currency::new(5383595353880761524945551555810230000),
+            },
+            TestCase {
+                payout: Currency::new(1110927021000000000000000000000000),
+                prefork: Currency::new(43326153819000000000000000000000),
+                postfork: Currency::new(43326153819000000000000000000000),
+            },
+            TestCase {
+                payout: Currency::new(215175656237682186102553629801543673418),
+                prefork: Currency::new(8391850593269605257999591562260200000),
+                postfork: Currency::new(8391850593269605257999591562260200000),
+            },
+            TestCase {
+                payout: Currency::new(646634091000000000000000000000000),
+                prefork: Currency::new(25218729549000000000000000000000),
+                postfork: Currency::new(25218729549000000000000000000000),
+            },
+            TestCase {
+                payout: Currency::new(128469923315667767051668090462322677166),
+                prefork: Currency::new(5010327009311042915015055528030580000),
+                postfork: Currency::new(5010327009311042915015055528030580000),
+            },
+            TestCase {
+                payout: Currency::new(2889549915000000000000000000000000),
+                prefork: Currency::new(112692446685000000000000000000000),
+                postfork: Currency::new(112692446685000000000000000000000),
+            },
+            TestCase {
+                payout: Currency::new(269364173205837265395254441592734706401),
+                prefork: Currency::new(10505202755027653350414923222116650000),
+                postfork: Currency::new(10505202755027653350414923222116650000),
+            },
+        ];
+
+        let mut cs = ChainState {
+            state: State {
+                index: ChainIndex {
+                    height: 1,
+                    id: BlockID::default(),
+                },
+                prev_timestamps: [OffsetDateTime::UNIX_EPOCH; 11],
+                depth: BlockID::default(),
+                child_target: BlockID::default(),
+                siafund_pool: Currency::new(0),
+                oak_time: Duration::new(0, 0),
+                oak_target: BlockID::default(),
+                foundation_primary_address: Address::new([0u8; 32]),
+                foundation_failsafe_address: Address::new([0u8; 32]),
+            },
+            network: Network {
+                name: "test",
+                initial_coinbase: Currency::new(0),
+                minimum_coinbase: Currency::new(0),
+                initial_target: BlockID::default(),
+                block_interval: Duration::new(1, 0),
+                maturity_delay: 0,
+                hardfork_dev_addr: HardforkDevAddr {
+                    height: 0,
+                    old_address: Address::new([0u8; 32]),
+                    new_address: Address::new([0u8; 32]),
+                },
+                hardfork_tax: HardforkTax { height: 10 },
+                hardfork_storage_proof: HardforkStorageProof { height: 0 },
+                hardfork_asic: HardforkASIC {
+                    height: 0,
+                    oak_time: Duration::new(0, 0),
+                    oak_target: BlockID::default(),
+                },
+                hardfork_oak: HardforkOak {
+                    height: 0,
+                    fix_height: 0,
+                    genesis_timestamp: OffsetDateTime::UNIX_EPOCH,
+                },
+                hardfork_foundation: HardforkFoundation {
+                    height: 0,
+                    primary_address: Address::new([0u8; 32]),
+                    failsafe_address: Address::new([0u8; 32]),
+                },
+                hardfork_v2: HardforkV2 {
+                    allow_height: 0,
+                    require_height: 0,
+                },
+            },
+        };
+
+        for tc in test_cases.iter() {
+            let fc = FileContract {
+                payout: tc.payout,
+                file_size: 0,
+                file_merkle_root: Hash256::default(),
+                window_start: 0,
+                window_end: 0,
+                unlock_hash: Address::new([0u8; 32]),
+                revision_number: 0,
+                valid_proof_outputs: vec![],
+                missed_proof_outputs: vec![],
+            };
+
+            let tax = fc.tax(&cs);
+            assert_eq!(
+                tax, tc.prefork,
+                "prefork tax incorrect for payout {:?}",
+                tc.payout
+            );
+            cs.state.index.height = 11;
+            let tax = fc.tax(&cs);
+            assert_eq!(
+                tax, tc.postfork,
+                "postfork tax incorrect for payout {:?}",
+                tc.payout
+            );
         }
     }
 }

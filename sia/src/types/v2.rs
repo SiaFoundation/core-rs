@@ -1,3 +1,4 @@
+use crate::consensus::ChainState;
 use crate::encoding::{self, SiaDecodable, SiaDecode, SiaEncodable, SiaEncode};
 use serde::de::{Error, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
@@ -53,6 +54,13 @@ pub struct FileContract {
 
     pub renter_signature: Signature,
     pub host_signature: Signature,
+}
+
+impl FileContract {
+    pub fn tax(&self, cs: &ChainState) -> Currency {
+        let tax = (self.renter_output.value + self.host_output.value) / Currency::new(25); // 4%
+        tax - (tax % Currency::new(cs.siafund_count() as u128))
+    }
 }
 
 /// A SiacoinElement is a record of a Siacoin UTXO within the state accumulator.
@@ -368,10 +376,16 @@ pub struct Transaction {
 
 #[cfg(test)]
 mod tests {
+    use crate::consensus::{
+        HardforkASIC, HardforkDevAddr, HardforkFoundation, HardforkOak, HardforkStorageProof,
+        HardforkTax, HardforkV2, Network, State,
+    };
+
     use super::*;
     use core::fmt::Debug;
     use serde::de::DeserializeOwned;
     use serde::Serialize;
+    use time::{Duration, OffsetDateTime};
 
     /// test_serialize_json is a helper to test serialization and deserialization of a struct to and from JSON.
     fn test_serialize_json<S: Serialize + DeserializeOwned + Debug + PartialEq>(
@@ -800,6 +814,195 @@ mod tests {
 
             test_serialize(&fcr, tc.binary_str.as_str());
             test_serialize_json(&fcr, tc.json_str.as_str());
+        }
+    }
+
+    #[test]
+    fn test_file_contract_tax() {
+        struct TestCase {
+            output_value: Currency,
+            tax: Currency,
+        }
+        let test_cases = vec![
+            TestCase {
+                output_value: Currency::new(0),
+                tax: Currency::new(0),
+            },
+            TestCase {
+                output_value: Currency::new(0),
+                tax: Currency::new(0),
+            },
+            TestCase {
+                output_value: Currency::new(1),
+                tax: Currency::new(0),
+            },
+            TestCase {
+                output_value: Currency::new(170141183460469231731687303715884105727),
+                tax: Currency::new(13611294676837538538534984297270720000),
+            },
+            TestCase {
+                output_value: Currency::new(805949712500000000000000000000000),
+                tax: Currency::new(64475977000000000000000000000000),
+            },
+            TestCase {
+                output_value: Currency::new(151318823166141058930638084278357033939),
+                tax: Currency::new(12105505853291284714451046742268560000),
+            },
+            TestCase {
+                output_value: Currency::new(2087287149000000000000000000000000),
+                tax: Currency::new(166982971920000000000000000000000),
+            },
+            TestCase {
+                output_value: Currency::new(19054329256128693174495496952954959442),
+                tax: Currency::new(1524346340490295453959639756236390000),
+            },
+            TestCase {
+                output_value: Currency::new(1463835551500000000000000000000000),
+                tax: Currency::new(117106844120000000000000000000000),
+            },
+            TestCase {
+                output_value: Currency::new(34808017277671855105213753517013880976),
+                tax: Currency::new(2784641382213748408417100281361110000),
+            },
+            TestCase {
+                output_value: Currency::new(1456475819000000000000000000000000),
+                tax: Currency::new(116518065520000000000000000000000),
+            },
+            TestCase {
+                output_value: Currency::new(4050009160038948139568737574567615426),
+                tax: Currency::new(324000732803115851165499005965400000),
+            },
+            TestCase {
+                output_value: Currency::new(611362349000000000000000000000000),
+                tax: Currency::new(48908987920000000000000000000000),
+            },
+            TestCase {
+                output_value: Currency::new(59744399278834191323014460064531501644),
+                tax: Currency::new(4779551942306735305841156805162520000),
+            },
+            TestCase {
+                output_value: Currency::new(1971395366500000000000000000000000),
+                tax: Currency::new(157711629320000000000000000000000),
+            },
+            TestCase {
+                output_value: Currency::new(129395477943018813820173885271365401215),
+                tax: Currency::new(10351638235441505105613910821709230000),
+            },
+            TestCase {
+                output_value: Currency::new(1562430843000000000000000000000000),
+                tax: Currency::new(124994467440000000000000000000000),
+            },
+            TestCase {
+                output_value: Currency::new(33394010960011557818205782768368594560),
+                tax: Currency::new(2671520876800924625456462621469480000),
+            },
+            TestCase {
+                output_value: Currency::new(1464305596000000000000000000000000),
+                tax: Currency::new(117144447680000000000000000000000),
+            },
+            TestCase {
+                output_value: Currency::new(33699424149038914903292787212706936885),
+                tax: Currency::new(2695953931923113192263422977016550000),
+            },
+            TestCase {
+                output_value: Currency::new(455795805000000000000000000000000),
+                tax: Currency::new(36463664400000000000000000000000),
+            },
+            TestCase {
+                output_value: Currency::new(88567642754201788868008131876936390234),
+                tax: Currency::new(7085411420336143109440650550154910000),
+            },
+            TestCase {
+                output_value: Currency::new(359253930000000000000000000000000),
+                tax: Currency::new(28740314400000000000000000000000),
+            },
+            TestCase {
+                output_value: Currency::new(56501907684312465044405566127405468273),
+                tax: Currency::new(4520152614744997203552445290192430000),
+            },
+        ];
+
+        let cs = ChainState {
+            state: State {
+                index: ChainIndex {
+                    height: 1,
+                    id: BlockID::default(),
+                },
+                prev_timestamps: [OffsetDateTime::UNIX_EPOCH; 11],
+                depth: BlockID::default(),
+                child_target: BlockID::default(),
+                siafund_pool: Currency::new(0),
+                oak_time: Duration::new(0, 0),
+                oak_target: BlockID::default(),
+                foundation_primary_address: Address::new([0u8; 32]),
+                foundation_failsafe_address: Address::new([0u8; 32]),
+            },
+            network: Network {
+                name: "test",
+                initial_coinbase: Currency::new(0),
+                minimum_coinbase: Currency::new(0),
+                initial_target: BlockID::default(),
+                block_interval: Duration::new(1, 0),
+                maturity_delay: 0,
+                hardfork_dev_addr: HardforkDevAddr {
+                    height: 0,
+                    old_address: Address::new([0u8; 32]),
+                    new_address: Address::new([0u8; 32]),
+                },
+                hardfork_tax: HardforkTax { height: 10 },
+                hardfork_storage_proof: HardforkStorageProof { height: 0 },
+                hardfork_asic: HardforkASIC {
+                    height: 0,
+                    oak_time: Duration::new(0, 0),
+                    oak_target: BlockID::default(),
+                },
+                hardfork_oak: HardforkOak {
+                    height: 0,
+                    fix_height: 0,
+                    genesis_timestamp: OffsetDateTime::UNIX_EPOCH,
+                },
+                hardfork_foundation: HardforkFoundation {
+                    height: 0,
+                    primary_address: Address::new([0u8; 32]),
+                    failsafe_address: Address::new([0u8; 32]),
+                },
+                hardfork_v2: HardforkV2 {
+                    allow_height: 0,
+                    require_height: 0,
+                },
+            },
+        };
+
+        for tc in test_cases.iter() {
+            let fc = FileContract {
+                capacity: 0,
+                filesize: 0,
+                file_merkle_root: Hash256::default(),
+                revision_number: 0,
+                proof_height: 0,
+                expiration_height: 0,
+                missed_host_value: Currency::new(0),
+                total_collateral: Currency::new(0),
+                host_public_key: PublicKey::new([0u8; 32]),
+                renter_public_key: PublicKey::new([0u8; 32]),
+                host_signature: Signature::new([0u8; 64]),
+                renter_signature: Signature::new([0u8; 64]),
+                renter_output: SiacoinOutput {
+                    value: tc.output_value,
+                    address: Address::default(),
+                },
+                host_output: SiacoinOutput {
+                    value: tc.output_value,
+                    address: Address::default(),
+                },
+            };
+
+            let tax = fc.tax(&cs);
+            assert_eq!(
+                tax, tc.tax,
+                "prefork tax incorrect for payout {:?}",
+                tc.output_value
+            );
         }
     }
 }

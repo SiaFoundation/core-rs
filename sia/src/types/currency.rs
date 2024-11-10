@@ -1,5 +1,5 @@
 use core::num::ParseIntError;
-use core::ops::{Add, Deref, DerefMut, Div, Mul, Sub};
+use core::ops::{Add, Deref, DerefMut, Div, Mul, Rem, Sub};
 use std::io::Write;
 use std::iter::Sum;
 
@@ -12,7 +12,7 @@ const SIACOIN_PRECISION_I32: i32 = 24;
 const SIACOIN_PRECISION_U32: u32 = 24;
 
 // Currency represents a quantity of Siacoins as Hastings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Currency(u128);
 
 // TODO: To distinguish between v1 and v2 currencies we could make Currency an
@@ -104,7 +104,7 @@ where
 }
 
 impl Currency {
-    pub fn new(value: u128) -> Self {
+    pub const fn new(value: u128) -> Self {
         Currency(value)
     }
 
@@ -173,7 +173,7 @@ impl Currency {
     /// # Returns
     ///
     /// Returns a `Currency` instance representing the specified amount of Siacoins.
-    pub fn siacoins(n: u64) -> Self {
+    pub const fn siacoins(n: u64) -> Self {
         Currency::new((n as u128) * 10u128.pow(SIACOIN_PRECISION_U32))
     }
 
@@ -233,6 +233,14 @@ impl Div for Currency {
 impl Sum for Currency {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         iter.fold(Currency::new(0), Add::add)
+    }
+}
+
+impl Rem for Currency {
+    type Output = Self;
+
+    fn rem(self, rhs: Self) -> Self::Output {
+        Self(self.0 % rhs.0)
     }
 }
 
