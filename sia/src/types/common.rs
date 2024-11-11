@@ -386,6 +386,18 @@ impl V1SiaDecodable for SiafundOutput {
 #[derive(Debug, PartialEq, Clone, SiaEncode, V1SiaEncode, SiaDecode, V1SiaDecode)]
 pub struct Leaf([u8; 64]);
 
+impl Leaf {
+    pub fn parse_string(s: &str) -> Result<Self, HexParseError> {
+        if s.len() != 128 {
+            return Err(HexParseError::InvalidLength);
+        }
+
+        let mut data = [0u8; 64];
+        hex::decode_to_slice(s, &mut data).map_err(HexParseError::HexError)?;
+        Ok(Leaf(data))
+    }
+}
+
 impl From<[u8; 64]> for Leaf {
     fn from(data: [u8; 64]) -> Self {
         Leaf(data)
