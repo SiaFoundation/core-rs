@@ -1,5 +1,8 @@
+use std::io;
+
 use crate::consensus::ChainState;
 use crate::encoding::{self, SiaDecodable, SiaDecode, SiaEncodable, SiaEncode};
+use blake2b_simd::Params;
 use serde::de::{Error, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
@@ -32,6 +35,23 @@ pub struct Attestation {
     pub signature: Signature,
 }
 
+impl Attestation {
+    fn encode_semantics<W: std::io::Write>(&self, w: &mut W) -> encoding::Result<()> {
+        self.public_key.encode(w)?;
+        self.key.encode(w)?;
+        self.value.encode(w)?;
+        [0u8; 64].encode(w) // empty sig
+    }
+
+    pub fn sig_hash(&self, cs: &ChainState) -> Hash256 {
+        let mut state = Params::new().hash_length(32).to_state();
+        state.update("sig/attestation".as_bytes());
+        state.update(cs.replay_prefix());
+        self.encode_semantics(&mut state).unwrap();
+        state.finalize().into()
+    }
+}
+
 /// A FileContract is a storage agreement between a renter and a host. It
 /// consists of a bidirectional payment channel that resolves as either "valid"
 /// or "missed" depending on whether a valid StorageProof is submitted for the
@@ -60,6 +80,32 @@ impl FileContract {
     pub fn tax(&self, cs: &ChainState) -> Currency {
         let tax = (self.renter_output.value + self.host_output.value) / Currency::new(25); // 4%
         tax - (tax % Currency::new(cs.siafund_count() as u128))
+    }
+
+    fn encode_semantics<W: std::io::Write>(&self, w: &mut W) -> encoding::Result<()> {
+        self.capacity.encode(w)?;
+        self.filesize.encode(w)?;
+        self.file_merkle_root.encode(w)?;
+        self.proof_height.encode(w)?;
+        self.expiration_height.encode(w)?;
+        self.renter_output.encode(w)?;
+        self.host_output.encode(w)?;
+        self.missed_host_value.encode(w)?;
+        self.total_collateral.encode(w)?;
+        self.renter_public_key.encode(w)?;
+        self.host_public_key.encode(w)?;
+        self.revision_number.encode(w)?;
+        [0u8; 64].encode(w)?; // nil renter signature
+        [0u8; 64].encode(w)?; // nil host signature
+        Ok(())
+    }
+
+    pub fn sig_hash(&self, cs: ChainState) -> Hash256 {
+        let mut state = Params::new().hash_length(32).to_state();
+        state.update("sig/filecontract".as_bytes());
+        state.update(cs.replay_prefix());
+        self.encode_semantics(&mut state).unwrap();
+        state.finalize().into()
     }
 }
 
@@ -102,6 +148,16 @@ pub struct ChainIndexElement {
     pub chain_index: ChainIndex,
 }
 
+impl ChainIndexElement {
+    pub fn encode_semantics<W: std::io::Write>(&self, w: &mut W) -> encoding::Result<()> {
+        self.state_element.leaf_index.encode(w)?;
+        Vec::<Hash256>::new().encode(w)?; // empty merkle proof
+        self.id.encode(w)?;
+        self.chain_index.encode(w)?;
+        Ok(())
+    }
+}
+
 /// An AttestationElement is a record of an Attestation within the state
 /// accumulator.
 pub struct AttestationElement {
@@ -137,6 +193,14 @@ pub struct FileContractRevision {
     pub revision: FileContract,
 }
 
+impl FileContractRevision {
+    fn encode_semantics<W: std::io::Write>(&self, w: &mut W) -> encoding::Result<()> {
+        self.parent.encode(w)?;
+        self.revision.encode_semantics(w)?;
+        Ok(())
+    }
+}
+
 /// A FileContractRenewal renews a file contract with optional rollover
 /// of any unspent funds.
 #[derive(Debug, PartialEq, Serialize, Deserialize, SiaEncode, SiaDecode)]
@@ -150,6 +214,26 @@ pub struct FileContractRenewal {
     // signatures cover above fields
     pub renter_signature: Signature,
     pub host_signature: Signature,
+}
+
+impl FileContractRenewal {
+    fn encode_semantics<W: std::io::Write>(&self, w: &mut W) -> encoding::Result<()> {
+        self.final_revision.encode_semantics(w)?;
+        self.new_contract.encode_semantics(w)?;
+        self.renter_rollover.encode(w)?;
+        self.host_rollover.encode(w)?;
+        [0u8; 64].encode(w)?; // empty renter sig
+        [0u8; 64].encode(w)?; // empty host sig
+        Ok(())
+    }
+
+    pub fn sig_hash(&self, cs: ChainState) -> Hash256 {
+        let mut state = Params::new().hash_length(32).to_state();
+        state.update("sig/filecontractrenewal".as_bytes());
+        state.update(cs.replay_prefix());
+        self.encode_semantics(&mut state).unwrap();
+        state.finalize().into()
+    }
 }
 
 /// A StorageProof asserts the presence of a randomly-selected leaf within the
@@ -169,6 +253,15 @@ pub struct StorageProof {
     // The leaf is always 64 bytes, extended with zeros if necessary.
     pub leaf: Leaf,
     pub proof: Vec<Hash256>,
+}
+
+impl StorageProof {
+    fn encode_semantics<W: std::io::Write>(&self, w: &mut W) -> encoding::Result<()> {
+        self.proof_index.encode_semantics(w)?;
+        self.leaf.encode(w)?;
+        self.proof.encode(w)?;
+        Ok(())
+    }
 }
 
 // A ContractResolution closes a v2 file contract's payment channel. There
@@ -217,6 +310,27 @@ pub enum ContractResolution {
 pub struct FileContractResolution {
     pub parent: FileContractElement,
     pub resolution: ContractResolution,
+}
+
+impl FileContractResolution {
+    fn encode_semantics<W: std::io::Write>(&self, w: &mut W) -> encoding::Result<()> {
+        self.parent.id.encode(w)?;
+        match &self.resolution {
+            ContractResolution::Renewal(renewal) => {
+                0u8.encode(w)?;
+                renewal.encode_semantics(w)
+            }
+            ContractResolution::StorageProof(proof) => {
+                1u8.encode(w)?;
+                proof.encode_semantics(w)
+            }
+            ContractResolution::Finalization(_) => {
+                2u8.encode(w)?;
+                [0u8; 64].encode(w)
+            }
+            ContractResolution::Expiration() => 3u8.encode(w),
+        }
+    }
 }
 
 impl SiaEncodable for FileContractResolution {
@@ -366,12 +480,53 @@ pub struct Transaction {
     pub siacoin_outputs: Vec<SiacoinOutput>,
     pub siafund_inputs: Vec<SiafundInput>,
     pub siafund_outputs: Vec<SiafundOutput>,
-    pub file_contracts: Vec<FileContractElement>,
+    pub file_contracts: Vec<FileContract>,
     pub file_contract_revisions: Vec<FileContractRevision>,
     pub file_contract_resolutions: Vec<FileContractResolution>,
-    pub arbitrary_data: Vec<Vec<u8>>,
+    pub attestations: Vec<Attestation>,
+    pub arbitrary_data: Vec<u8>,
     pub new_foundation_address: Option<Address>,
     pub miner_fee: Currency,
+}
+
+impl Transaction {
+    fn encode_semantics<W: io::Write>(&self, w: &mut W) -> encoding::Result<()> {
+        self.siacoin_inputs.len().encode(w)?;
+        for input in &self.siacoin_inputs {
+            input.parent.id.encode(w)?;
+        }
+        self.siafund_outputs.encode(w)?;
+        self.siafund_inputs.len().encode(w)?;
+        for input in &self.siafund_inputs {
+            input.parent.id.encode(w)?;
+        }
+        self.siafund_outputs.encode(w)?;
+        self.file_contracts.len().encode(w)?;
+        for fc in &self.file_contracts {
+            fc.encode_semantics(w)?;
+        }
+        self.file_contract_revisions.len().encode(w)?;
+        for fcr in &self.file_contract_revisions {
+            fcr.encode_semantics(w)?;
+        }
+        self.file_contract_resolutions.len().encode(w)?;
+        for fcr in &self.file_contract_resolutions {
+            fcr.encode_semantics(w)?;
+        }
+        self.attestations.encode(w)?;
+        self.arbitrary_data.encode(w)?;
+        self.new_foundation_address.encode(w)?;
+        self.miner_fee.encode(w)?;
+        Ok(())
+    }
+
+    pub fn input_sig_hash(&self, cs: ChainState) -> Hash256 {
+        let mut state = Params::new().hash_length(32).to_state();
+        state.update("sig/input".as_bytes());
+        state.update(cs.replay_prefix());
+        self.encode_semantics(&mut state).unwrap();
+        state.finalize().into()
+    }
 }
 
 /// BlockData contains the additional V2 data included in a block.
