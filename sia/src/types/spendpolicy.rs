@@ -391,7 +391,9 @@ impl SiaDecodable for SpendPolicy {
 /// A policy that has been satisfied by a set of preimages and signatures.
 pub struct SatisfiedPolicy {
     pub policy: SpendPolicy,
+    #[serde(default)]
     pub preimages: Vec<Vec<u8>>,
+    #[serde(default)]
     pub signatures: Vec<Signature>,
 }
 

@@ -260,41 +260,32 @@ pub struct TransactionSignature {
     pub public_key_index: u64,
     pub timelock: u64,
     pub covered_fields: CoveredFields,
-    #[serde(with = "base64")]
+    #[serde(with = "crate::types::base64")]
     pub signature: Vec<u8>,
-}
-
-/// Helper module for base64 serialization
-mod base64 {
-    use base64::engine::general_purpose::STANDARD;
-    use base64::Engine;
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(v: &[u8], s: S) -> Result<S::Ok, S::Error> {
-        let base64 = STANDARD.encode(v);
-        s.serialize_str(&base64)
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
-        let base64 = String::deserialize(d)?;
-        STANDARD
-            .decode(base64.as_bytes())
-            .map_err(|e| serde::de::Error::custom(e.to_string()))
-    }
 }
 
 #[derive(Default, Debug, PartialEq, Serialize, Deserialize, V1SiaEncode, V1SiaDecode)]
 #[serde(rename_all = "camelCase")]
 pub struct Transaction {
+    #[serde(default)]
     pub siacoin_inputs: Vec<SiacoinInput>,
+    #[serde(default)]
     pub siacoin_outputs: Vec<SiacoinOutput>,
+    #[serde(default)]
     pub file_contracts: Vec<FileContract>,
+    #[serde(default)]
     pub file_contract_revisions: Vec<FileContractRevision>,
+    #[serde(default)]
     pub storage_proofs: Vec<StorageProof>,
+    #[serde(default)]
     pub siafund_inputs: Vec<SiafundInput>,
+    #[serde(default)]
     pub siafund_outputs: Vec<SiafundOutput>,
+    #[serde(default)]
     pub miner_fees: Vec<Currency>,
+    #[serde(default, with = "crate::types::vec_base64")]
     pub arbitrary_data: Vec<Vec<u8>>,
+    #[serde(default)]
     pub signatures: Vec<TransactionSignature>,
 }
 
