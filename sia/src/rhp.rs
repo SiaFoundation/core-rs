@@ -77,6 +77,7 @@ pub fn sector_root(sector: &[u8]) -> Hash256 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::hash_256;
 
     #[test]
     fn test_sector_root() {
@@ -84,10 +85,7 @@ mod tests {
         let root = sector_root(&sector);
         assert_eq!(
             root,
-            Hash256::parse_string(
-                "50ed59cecd5ed3ca9e65cec0797202091dbba45272dafa3faa4e27064eedd52c"
-            )
-            .unwrap()
+            hash_256!("50ed59cecd5ed3ca9e65cec0797202091dbba45272dafa3faa4e27064eedd52c")
         );
         println!("{root}");
     }

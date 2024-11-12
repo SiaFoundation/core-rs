@@ -60,7 +60,7 @@ pub(crate) mod vec_base64 {
 // serialized with a prefix
 #[macro_export]
 macro_rules! ImplHashID {
-    ($name:ident) => {
+    ($name:ident, $create_macro_name:ident) => {
         #[derive(
             Debug,
             Clone,
@@ -159,16 +159,57 @@ macro_rules! ImplHashID {
                 $name([0; 32])
             }
         }
+
+        #[doc = concat!("Creates a ", stringify!($name), " from a hex encoded string. Panics if the string is not 64 hex characters.")]
+        #[macro_export]
+        macro_rules! $create_macro_name {
+            // much meta
+            ($text:expr) => {{
+                const fn decode_hex_char(c: u8) -> Option<u8> {
+                    match c {
+                        b'0'..=b'9' => Some(c - b'0'),
+                        b'a'..=b'f' => Some(c - b'a' + 10),
+                        b'A'..=b'F' => Some(c - b'A' + 10),
+                        _ => None,
+                    }
+                }
+
+                const fn decode_hex_pair(hi: u8, lo: u8) -> Option<u8> {
+                    let hi = decode_hex_char(hi);
+                    let lo = decode_hex_char(lo);
+                    match ((hi, lo)) {
+                        (Some(hi), Some(lo)) => Some(hi << 4 | lo),
+                        _ => None,
+                    }
+                }
+
+                let src = $text.as_bytes();
+                let len = src.len();
+                assert!(len == 64, "invalid length");
+                let mut data = [0u8; 32];
+                let mut i = 0;
+                while i < 64 {
+                    let pair = decode_hex_pair(src[i], src[i + 1]);
+                    match pair {
+                        Some(byte) => data[i / 2] = byte,
+                        None => assert!(false, "invalid hex character"),
+                    }
+                    i += 2;
+                }
+                $name::new(data)
+            }};
+        }
+        pub use $create_macro_name;
     };
 }
 
-ImplHashID!(Hash256);
-ImplHashID!(BlockID);
-ImplHashID!(SiacoinOutputID);
-ImplHashID!(SiafundOutputID);
-ImplHashID!(FileContractID);
-ImplHashID!(TransactionID);
-ImplHashID!(AttestationID);
+ImplHashID!(Hash256, hash_256);
+ImplHashID!(BlockID, block_id);
+ImplHashID!(SiacoinOutputID, siacoin_id);
+ImplHashID!(SiafundOutputID, siafund_id);
+ImplHashID!(FileContractID, contract_id);
+ImplHashID!(TransactionID, transaction_id);
+ImplHashID!(AttestationID, attestation_id);
 
 #[derive(Debug, PartialEq, SiaEncode, SiaDecode, Serialize, Deserialize)]
 
@@ -278,7 +319,7 @@ impl Serialize for Address {
 }
 
 impl Address {
-    pub(crate) const fn new(addr: [u8; 32]) -> Address {
+    pub const fn new(addr: [u8; 32]) -> Address {
         Address(addr)
     }
 
@@ -340,6 +381,48 @@ impl fmt::Display for Address {
         write!(f, "{}", hex::encode(buf))
     }
 }
+
+/// address is a helper macro to create an Address from a string literal.
+/// The string literal must be a valid 76-character hex-encoded string.
+/// This is not exported outside of the crate because the address checksum
+/// is not validated, it is assumed to be correct.
+macro_rules! address {
+    ($text:expr) => {{
+        const fn decode_hex_char(c: u8) -> Option<u8> {
+            match c {
+                b'0'..=b'9' => Some(c - b'0'),
+                b'a'..=b'f' => Some(c - b'a' + 10),
+                b'A'..=b'F' => Some(c - b'A' + 10),
+                _ => None,
+            }
+        }
+
+        const fn decode_hex_pair(hi: u8, lo: u8) -> Option<u8> {
+            let hi = decode_hex_char(hi);
+            let lo = decode_hex_char(lo);
+            match ((hi, lo)) {
+                (Some(hi), Some(lo)) => Some(hi << 4 | lo),
+                _ => None,
+            }
+        }
+
+        let src = $text.as_bytes();
+        let len = src.len();
+        assert!(len == 76, "invalid address length");
+        let mut data = [0u8; 32];
+        let mut i = 0;
+        while i < 64 {
+            let pair = decode_hex_pair(src[i], src[i + 1]);
+            match pair {
+                Some(byte) => data[i / 2] = byte,
+                None => assert!(false, "invalid hex character"),
+            }
+            i += 2;
+        }
+        Address::new(data)
+    }};
+}
+pub(crate) use address;
 
 /// A SiacoinOutput is a Siacoin UTXO that can be spent using the unlock conditions
 /// for Address
@@ -437,48 +520,6 @@ pub struct StateElement {
     pub leaf_index: u64,
     pub merkle_proof: Vec<Hash256>,
 }
-
-/// address is a helper macro to create an Address from a string literal.
-/// The string literal must be a valid 76-character hex-encoded string.
-/// This is not exported outside of the crate because the address checksum
-/// is not validated, it is assumed to be correct.
-macro_rules! address {
-    ($text:expr) => {{
-        const fn decode_hex_char(c: u8) -> Option<u8> {
-            match c {
-                b'0'..=b'9' => Some(c - b'0'),
-                b'a'..=b'f' => Some(c - b'a' + 10),
-                b'A'..=b'F' => Some(c - b'A' + 10),
-                _ => None,
-            }
-        }
-
-        const fn decode_hex_pair(hi: u8, lo: u8) -> Option<u8> {
-            let hi = decode_hex_char(hi);
-            let lo = decode_hex_char(lo);
-            match ((hi, lo)) {
-                (Some(hi), Some(lo)) => Some(hi << 4 | lo),
-                _ => None,
-            }
-        }
-
-        let src = $text.as_bytes();
-        let len = src.len();
-        assert!(len == 76, "invalid address length");
-        let mut data = [0u8; 32];
-        let mut i = 0;
-        while i < 64 {
-            let pair = decode_hex_pair(src[i], src[i + 1]);
-            match pair {
-                Some(byte) => data[i / 2] = byte,
-                None => assert!(false, "invalid hex character"),
-            }
-            i += 2;
-        }
-        Address::new(data)
-    }};
-}
-pub(crate) use address;
 
 #[cfg(test)]
 mod tests {

@@ -542,12 +542,12 @@ pub struct BlockData {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::consensus::{
         HardforkASIC, HardforkDevAddr, HardforkFoundation, HardforkOak, HardforkStorageProof,
         HardforkTax, HardforkV2, Network, State,
     };
-
-    use super::*;
+    use crate::types::hash_256;
     use core::fmt::Debug;
     use serde::de::DeserializeOwned;
     use serde::Serialize;
@@ -632,10 +632,9 @@ mod tests {
             v2_file_contract: FileContract {
                 capacity: 7938725446189123975,
                 filesize: 4815560028289493432,
-                file_merkle_root: Hash256::parse_string(
-                    "dc033023420634ed4c7685c82aa884eebe8415e16c57b6a55c673a5a98fa7b0d",
-                )
-                .unwrap(),
+                file_merkle_root: hash_256!(
+                    "dc033023420634ed4c7685c82aa884eebe8415e16c57b6a55c673a5a98fa7b0d"
+                ),
                 proof_height: 6265010746208955018,
                 expiration_height: 5159880069065321628,
                 renter_output: SiacoinOutput {

@@ -534,7 +534,9 @@ mod tests {
     };
     use crate::seed::Seed;
     use crate::signing::{PrivateKey, PublicKey, Signature};
-    use crate::types::{BlockID, ChainIndex};
+    use crate::types::{
+        address, contract_id, hash_256, siacoin_id, siafund_id, BlockID, ChainIndex,
+    };
     use serde::de::DeserializeOwned;
     use std::fmt::Debug;
     use std::vec;
@@ -654,10 +656,9 @@ mod tests {
     #[test]
     fn test_serialize_siacoin_input() {
         let siacoin_input = SiacoinInput {
-            parent_id: SiacoinOutputID::parse_string(
-                "b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24",
-            )
-            .unwrap(),
+            parent_id: siacoin_id!(
+                "b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24"
+            ),
             unlock_conditions: UnlockConditions::new(
                 123,
                 vec![PublicKey::new([
@@ -687,10 +688,9 @@ mod tests {
     #[test]
     fn test_serialize_siafund_input() {
         let siafund_input = SiafundInput {
-            parent_id: SiafundOutputID::parse_string(
-                "b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24",
-            )
-            .unwrap(),
+            parent_id: siafund_id!(
+                "b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24"
+            ),
             unlock_conditions: UnlockConditions::new(
                 123,
                 vec![PublicKey::new([
@@ -728,10 +728,9 @@ mod tests {
     #[test]
     fn test_serialize_transaction_signature() {
         let signature = TransactionSignature {
-            parent_id: Hash256::parse_string(
-                "b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24",
-            )
-            .unwrap(),
+            parent_id: hash_256!(
+                "b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24"
+            ),
             public_key_index: 1,
             timelock: 2,
             covered_fields: CoveredFields {
@@ -873,24 +872,17 @@ mod tests {
     #[test]
     fn test_serialize_storage_proof() {
         let storage_proof = StorageProof {
-            parent_id: FileContractID::parse_string(
-                "b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24",
-            )
-            .unwrap(),
+            parent_id: contract_id!(
+                "b3633a1370a72002ae2a956d21e8d481c3a69e146633470cf625ecd83fdeaa24"
+            ),
             leaf: Leaf::from([
                 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
                 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
                 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64,
             ]),
             proof: vec![
-                Hash256::parse_string(
-                    "0102030000000000000000000000000000000000000000000000000000000000",
-                )
-                .unwrap(),
-                Hash256::parse_string(
-                    "0405060000000000000000000000000000000000000000000000000000000000",
-                )
-                .unwrap(),
+                hash_256!("0102030000000000000000000000000000000000000000000000000000000000"),
+                hash_256!("0405060000000000000000000000000000000000000000000000000000000000"),
             ],
         };
 
@@ -913,10 +905,9 @@ mod tests {
     fn test_serialize_transaction() {
         let transaction = Transaction {
             siacoin_inputs: vec![SiacoinInput {
-                parent_id: SiacoinOutputID::parse_string(
-                    "750d22eff727689d1d8d1c83e513a30bb68ee7f9125a4dafc882459e34c2069d",
-                )
-                .unwrap(),
+                parent_id: siacoin_id!(
+                    "750d22eff727689d1d8d1c83e513a30bb68ee7f9125a4dafc882459e34c2069d"
+                ),
                 unlock_conditions: UnlockConditions {
                     timelock: 0,
                     public_keys: vec![UnlockKey::parse_string(
@@ -928,10 +919,7 @@ mod tests {
             }],
             siacoin_outputs: vec![SiacoinOutput {
                 value: Currency::new(890415399000000000000000000000000),
-                address: Address::parse_string(
-                    "480a064b5fca13002a7fe575845154bbf0b3af4cc4f147cbed387d43cce3568ae2497366eaa7",
-                )
-                .unwrap(),
+                address: address!("480a064b5fca13002a7fe575845154bbf0b3af4cc4f147cbed387d43cce3568ae2497366eaa7"),
             }],
             file_contracts: vec![
                 FileContract{
@@ -945,25 +933,21 @@ mod tests {
                     valid_proof_outputs: vec![
                         SiacoinOutput{
                             value: Currency::new(1933513214000000000000000000000000),
-                            address: Address::parse_string(
-                                "944524fff2c49c401e748db37cfda7569fa6df35b704fe716394f2ac3f40ce87b4506e9906f0",
-                            ).unwrap(),
+                            address: address!("944524fff2c49c401e748db37cfda7569fa6df35b704fe716394f2ac3f40ce87b4506e9906f0"),
                         }
                     ],
                     missed_proof_outputs: vec![
                        SiacoinOutput{
                             value: Currency::new(2469287901000000000000000000000000),
-                            address: Address::parse_string(
-                                "1df67838262d7109ffcd9018f183b1eb33f05659a274b89ea6b52ff3617d34a770e9dd071d2e",
-                            ).unwrap(),
+                            address: address!("1df67838262d7109ffcd9018f183b1eb33f05659a274b89ea6b52ff3617d34a770e9dd071d2e"),
                        }
                     ]
                 }
             ],
             file_contract_revisions: vec![
                 FileContractRevision{
-                   parent_id: FileContractID::parse_string(
-                        "e4e26d93771d3bbb3d9dd306105d77cfb3a6254d1cc3495903af6e013442c63c").unwrap(),
+                   parent_id: contract_id!(
+                        "e4e26d93771d3bbb3d9dd306105d77cfb3a6254d1cc3495903af6e013442c63c"),
                    unlock_conditions: UnlockConditions { timelock: 0, public_keys: vec![UnlockKey::parse_string("ed25519:e6b9cde4eb058f8ecbb083d99779cb0f6d518d5386f019af6ead09fa52de8567").unwrap()], signatures_required: 206644730660526450 },
                    revision_number: 10595710523108536025,
                    file_size: 0,
@@ -973,13 +957,13 @@ mod tests {
                    valid_proof_outputs: vec![
                        SiacoinOutput{
                            value: Currency::new(2435858510000000000000000000000000),
-                           address: Address::parse_string("543bc0eda69f728d0a0fbce08e5bfc5ed7b961300e0af226949e135f7d12e32f0544e5262d6f").unwrap(),
+                           address: address!("543bc0eda69f728d0a0fbce08e5bfc5ed7b961300e0af226949e135f7d12e32f0544e5262d6f"),
                        }
                    ],
                    missed_proof_outputs: vec![
                         SiacoinOutput{
                         value: Currency::new(880343701000000000000000000000000),
-                        address: Address::parse_string("7b7f9aee981fe0d93bb3f49c6233cf847ebdd39d7dc5253f7fc330df2167073b35f035703237").unwrap(),
+                        address: address!("7b7f9aee981fe0d93bb3f49c6233cf847ebdd39d7dc5253f7fc330df2167073b35f035703237"),
                         },
                    ],
                    unlock_hash: Address::default(),
@@ -987,11 +971,11 @@ mod tests {
             ],
             storage_proofs: vec![
                 StorageProof{
-                    parent_id: FileContractID::parse_string(
-                        "c0b9e98c9e03a2740c75d673871c1ee91f36d1bb329ff3ddbf1dfa8c6e1a64eb").unwrap(),
+                    parent_id: contract_id!(
+                        "c0b9e98c9e03a2740c75d673871c1ee91f36d1bb329ff3ddbf1dfa8c6e1a64eb"),
                     leaf: Leaf::parse_string("b78fa521dc62d9ced82bc3b61e0aa5a5c221d6cca5db63d94c9879543fb98c0a971094a89cd4408487ae32902248d321b545f9a051729aa0bb1725b848e3d453").unwrap(),
                     proof: vec![
-                        Hash256::parse_string("fe08c0a061475e7e5dec19e717cf98792fa7b555d0b5d3540a05db09f59ab8de").unwrap(),
+                        hash_256!("fe08c0a061475e7e5dec19e717cf98792fa7b555d0b5d3540a05db09f59ab8de"),
                     ],
                 }
             ],
@@ -1005,7 +989,7 @@ mod tests {
             ],
             signatures: vec![
                 TransactionSignature{
-                    parent_id: Hash256::parse_string("06d1fca03c5ddd9b09116db1b97c5451f7dc792b05362969f83e3e8dc1007f46").unwrap(),
+                    parent_id: hash_256!("06d1fca03c5ddd9b09116db1b97c5451f7dc792b05362969f83e3e8dc1007f46"),
                     public_key_index: 6088345341283457116,
                     timelock: 2014247885072555224,
                     covered_fields: CoveredFields::whole_transaction(),
@@ -1099,7 +1083,7 @@ mod tests {
 					siacoin_outputs: vec![
 						SiacoinOutput{
 							value: Currency::new(67856467336433871),
-							address: Address::parse_string("000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69").unwrap(),
+							address: address!("000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69"),
 						}
 					],
 					file_contracts: Vec::new(),
@@ -1264,7 +1248,7 @@ mod tests {
         ];
 
         for (expected_str, public_key) in test_cases {
-            let expected = Address::parse_string(expected_str).unwrap();
+            let expected = address!(expected_str);
 
             let public_key = PublicKey::new(public_key.as_slice().try_into().unwrap());
             let addr = UnlockConditions::standard_unlock_conditions(public_key).address();
@@ -1286,94 +1270,81 @@ mod tests {
         let test_addresses = vec![
             (
                 0,
-                Address::parse_string(
-                    "16e09f8dc8a100a03ba1f9503e4035661738d1bea0b6cdc9bb012d3cd25edaacfd780909e550",
-                )
-                .unwrap(),
+                address!(
+                    "16e09f8dc8a100a03ba1f9503e4035661738d1bea0b6cdc9bb012d3cd25edaacfd780909e550"
+                ),
             ),
             (
                 1,
-                Address::parse_string(
-                    "cb016a7018485325fa299bc247113e3792dbea27ee08d2bb57a16cb0804fa449d3a91ee647a1",
-                )
-                .unwrap(),
+                address!(
+                    "cb016a7018485325fa299bc247113e3792dbea27ee08d2bb57a16cb0804fa449d3a91ee647a1"
+                ),
             ),
             (
                 2,
-                Address::parse_string(
-                    "5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34",
-                )
-                .unwrap(),
+                address!(
+                    "5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34"
+                ),
             ),
             (
                 3,
-                Address::parse_string(
-                    "c3bc7bc1431460ed2556874cb63714760120125da758ebbd78198534cb3d25774352fdbb3e8b",
-                )
-                .unwrap(),
+                address!(
+                    "c3bc7bc1431460ed2556874cb63714760120125da758ebbd78198534cb3d25774352fdbb3e8b"
+                ),
             ),
             (
                 4,
-                Address::parse_string(
-                    "ebc7eae02ecf76e3ba7312bab6b6f71e9d255801a3a3b83f7cc26bd520b2c27a511cd8604e4b",
-                )
-                .unwrap(),
+                address!(
+                    "ebc7eae02ecf76e3ba7312bab6b6f71e9d255801a3a3b83f7cc26bd520b2c27a511cd8604e4b"
+                ),
             ),
             (
                 5,
-                Address::parse_string(
-                    "fce241a44b944b10f414782dd35f5d96b92aec3d6da92a45ae44b7dc8cfb4b4ba97a34ce7032",
-                )
-                .unwrap(),
+                address!(
+                    "fce241a44b944b10f414782dd35f5d96b92aec3d6da92a45ae44b7dc8cfb4b4ba97a34ce7032"
+                ),
             ),
             (
                 6,
-                Address::parse_string(
-                    "36d253e7c3af2213eccaf0a61c6d24be8668f72af6e773463f3c41efc8bb70f2b353b90de9dd",
-                )
-                .unwrap(),
+                address!(
+                    "36d253e7c3af2213eccaf0a61c6d24be8668f72af6e773463f3c41efc8bb70f2b353b90de9dd"
+                ),
             ),
             (
                 7,
-                Address::parse_string(
-                    "c8f85375fb264428c86594863440f856db1da4614d75f4a30e3d9db3dfc88af6995128c6a845",
-                )
-                .unwrap(),
+                address!(
+                    "c8f85375fb264428c86594863440f856db1da4614d75f4a30e3d9db3dfc88af6995128c6a845"
+                ),
             ),
             (
                 8,
-                Address::parse_string(
-                    "85ef2ba14ee464060570b16bddaac91353961e7545067ccdf868a0ece305f00d2c08ec6844c6",
-                )
-                .unwrap(),
+                address!(
+                    "85ef2ba14ee464060570b16bddaac91353961e7545067ccdf868a0ece305f00d2c08ec6844c6"
+                ),
             ),
             (
                 9,
-                Address::parse_string(
-                    "9dcf644245eba91e7ea70c47ccadf479e6834c1c1221335e7246e0a6bc40e18362c4faa760b8",
-                )
-                .unwrap(),
+                address!(
+                    "9dcf644245eba91e7ea70c47ccadf479e6834c1c1221335e7246e0a6bc40e18362c4faa760b8"
+                ),
             ),
             (
                 4294967295,
-                Address::parse_string(
-                    "a906891f0c524fd272a905aa5dd7018c69e5d68222385cbd9d5292f38f021ce4bf00953a0659",
-                )
-                .unwrap(),
+                address!(
+                    "a906891f0c524fd272a905aa5dd7018c69e5d68222385cbd9d5292f38f021ce4bf00953a0659"
+                ),
             ),
             (
                 4294967296,
-                Address::parse_string(
-                    "b6ab338e624a304add7afe205361ac71821b87559a3b9c5b3735eaafa914eed533613a0af7fa",
-                )
-                .unwrap(),
+                address!(
+                    "b6ab338e624a304add7afe205361ac71821b87559a3b9c5b3735eaafa914eed533613a0af7fa"
+                ),
             ),
             (
                 18446744073709551615,
-                Address::parse_string(
-                    "832d0e8b5f967677d812d75559c373d930ad16eb90c31c29982a190bb7db9edf9438fd827938",
-                )
-                .unwrap(),
+                address!(
+                    "832d0e8b5f967677d812d75559c373d930ad16eb90c31c29982a190bb7db9edf9438fd827938"
+                ),
             ),
         ];
 
