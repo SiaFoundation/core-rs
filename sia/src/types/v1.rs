@@ -1248,7 +1248,7 @@ mod tests {
         ];
 
         for (expected_str, public_key) in test_cases {
-            let expected = address!(expected_str);
+            let expected = Address::parse_string(&expected_str).unwrap();
 
             let public_key = PublicKey::new(public_key.as_slice().try_into().unwrap());
             let addr = UnlockConditions::standard_unlock_conditions(public_key).address();

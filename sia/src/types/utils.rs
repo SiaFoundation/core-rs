@@ -47,6 +47,7 @@ pub(crate) const fn valid_hex_bytes(input: &[u8]) -> bool {
 
 /// address is a helper macro to create an Address from a string literal.
 /// The string literal must be a valid 76-character hex-encoded string.
+/// The checksum of the address is not validated.
 macro_rules! address {
     ($text:literal) => {{
         const _VALIDATE: () = {
@@ -58,16 +59,8 @@ macro_rules! address {
         };
         Address::new($crate::types::decode_hex_bytes::<32>($text.as_bytes()))
     }};
-    ($text:expr) => {{
-        if $text.len() != 76 {
-            panic!("expected 76 characters in address");
-        } else if !$crate::types::valid_hex_bytes($text.as_bytes()) {
-            panic!("invalid hex string")
-        }
-        Address::new($crate::types::decode_hex_bytes::<32>($text.as_bytes()))
-    }};
     () => {
-        compile_error!("unsupported hex macro usage")
+        compile_error!("unsupported address macro usage")
     };
 }
 pub(crate) use address;
@@ -175,7 +168,7 @@ macro_rules! impl_hash_id {
             }
         }
 
-        #[allow(unused_macros)] // these may not be used in all cases, but the linter shouldn't complain
+        #[allow(unused_macros)]
         macro_rules! $create_macro_name {
             ($text:literal) => {{
                 const _VALIDATE: () = {
@@ -187,16 +180,8 @@ macro_rules! impl_hash_id {
                 };
                 $name::new($crate::types::decode_hex_bytes::<32>($text.as_bytes()))
             }};
-            ($text:expr) => {{
-                if $text.len() != 64 {
-                    panic!("expected 64 characters");
-                } else if !$crate::types::valid_hex_bytes($text.as_bytes()) {
-                    panic!("invalid hex string")
-                }
-                $name::new($crate::types::decode_hex_bytes::<32>($text.as_bytes()))
-            }};
             () => {
-                compile_error!("unsupported hex macro usage")
+                compile_error!("unsupported macro usage")
             };
         }
         #[allow(unused)]
