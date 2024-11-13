@@ -9,210 +9,17 @@ use crate::encoding::{
     V1SiaEncodable, V1SiaEncode,
 };
 use crate::types::currency::Currency;
-use crate::types::{v1, v2};
+use crate::types::{impl_hash_id, v1, v2};
 
-/// Helper module for base64 serialization
-pub(crate) mod base64 {
-    use base64::engine::general_purpose::STANDARD;
-    use base64::Engine;
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(v: &[u8], s: S) -> Result<S::Ok, S::Error> {
-        let base64 = STANDARD.encode(v);
-        s.serialize_str(&base64)
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
-        let base64 = String::deserialize(d)?;
-        STANDARD
-            .decode(base64.as_bytes())
-            .map_err(|e| serde::de::Error::custom(e.to_string()))
-    }
-}
-
-// First, create a module for the base64 serialization
-pub(crate) mod vec_base64 {
-    use base64::engine::general_purpose::STANDARD;
-    use base64::Engine as _;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-    pub fn serialize<S>(v: &[Vec<u8>], serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let encoded: Vec<String> = v.iter().map(|bytes| STANDARD.encode(bytes)).collect();
-        encoded.serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<Vec<u8>>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let encoded: Vec<String> = Vec::deserialize(deserializer)?;
-        encoded
-            .into_iter()
-            .map(|s| STANDARD.decode(s).map_err(serde::de::Error::custom))
-            .collect()
-    }
-}
-
-// Macro to implement types used as identifiers which are 32 byte hashes and are
-// serialized with a prefix
-#[macro_export]
-macro_rules! ImplHashID {
-    ($name:ident, $create_macro_name:ident) => {
-        #[derive(
-            Debug,
-            Clone,
-            Copy,
-            PartialEq,
-            $crate::encoding::SiaEncode,
-            $crate::encoding::SiaDecode,
-            $crate::encoding::V1SiaEncode,
-            $crate::encoding::V1SiaDecode,
-        )]
-        pub struct $name([u8; 32]);
-
-        impl serde::Serialize for $name {
-            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-                if serializer.is_human_readable() {
-                    String::serialize(&self.to_string(), serializer)
-                } else {
-                    <[u8; 32]>::serialize(&self.0, serializer)
-                }
-            }
-        }
-
-        impl<'de> serde::Deserialize<'de> for $name {
-            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-            where
-                D: serde::Deserializer<'de>,
-            {
-                let s = String::deserialize(deserializer)?;
-                $name::parse_string(&s).map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
-            }
-        }
-
-        impl $name {
-            pub const fn new(b: [u8; 32]) -> Self {
-                Self(b)
-            }
-
-            // Example method that might be used in serialization/deserialization
-            pub fn parse_string(s: &str) -> Result<Self, $crate::types::HexParseError> {
-                let s = match s.split_once(':') {
-                    Some((_prefix, suffix)) => suffix,
-                    None => s,
-                };
-
-                if s.len() != 64 {
-                    return Err($crate::types::HexParseError::InvalidLength);
-                }
-
-                let mut data = [0u8; 32];
-                hex::decode_to_slice(s, &mut data)
-                    .map_err($crate::types::HexParseError::HexError)?;
-                Ok($name(data))
-            }
-        }
-
-        impl core::fmt::Display for $name {
-            fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-                write!(f, "{}", hex::encode(self.0))
-            }
-        }
-
-        impl From<blake2b_simd::Hash> for $name {
-            fn from(hash: blake2b_simd::Hash) -> Self {
-                let mut h = [0; 32];
-                h.copy_from_slice(&hash.as_bytes()[..32]);
-                Self(h)
-            }
-        }
-
-        impl From<[u8; 32]> for $name {
-            fn from(data: [u8; 32]) -> Self {
-                $name(data)
-            }
-        }
-
-        impl From<$name> for [u8; 32] {
-            fn from(hash: $name) -> [u8; 32] {
-                hash.0
-            }
-        }
-
-        impl AsRef<[u8; 32]> for $name {
-            fn as_ref(&self) -> &[u8; 32] {
-                &self.0
-            }
-        }
-
-        impl AsRef<[u8]> for $name {
-            fn as_ref(&self) -> &[u8] {
-                &self.0
-            }
-        }
-
-        impl Default for $name {
-            fn default() -> Self {
-                $name([0; 32])
-            }
-        }
-
-        #[doc = concat!("Creates a ", stringify!($name), " from a hex encoded string. Panics if the string is not 64 hex characters.")]
-        #[macro_export]
-        macro_rules! $create_macro_name {
-            // much meta
-            ($text:expr) => {{
-                const fn decode_hex_char(c: u8) -> Option<u8> {
-                    match c {
-                        b'0'..=b'9' => Some(c - b'0'),
-                        b'a'..=b'f' => Some(c - b'a' + 10),
-                        b'A'..=b'F' => Some(c - b'A' + 10),
-                        _ => None,
-                    }
-                }
-
-                const fn decode_hex_pair(hi: u8, lo: u8) -> Option<u8> {
-                    let hi = decode_hex_char(hi);
-                    let lo = decode_hex_char(lo);
-                    match ((hi, lo)) {
-                        (Some(hi), Some(lo)) => Some(hi << 4 | lo),
-                        _ => None,
-                    }
-                }
-
-                let src = $text.as_bytes();
-                let len = src.len();
-                assert!(len == 64, "invalid length");
-                let mut data = [0u8; 32];
-                let mut i = 0;
-                while i < 64 {
-                    let pair = decode_hex_pair(src[i], src[i + 1]);
-                    match pair {
-                        Some(byte) => data[i / 2] = byte,
-                        None => assert!(false, "invalid hex character"),
-                    }
-                    i += 2;
-                }
-                $name::new(data)
-            }};
-        }
-        pub use $create_macro_name;
-    };
-}
-
-ImplHashID!(Hash256, hash_256);
-ImplHashID!(BlockID, block_id);
-ImplHashID!(SiacoinOutputID, siacoin_id);
-ImplHashID!(SiafundOutputID, siafund_id);
-ImplHashID!(FileContractID, contract_id);
-ImplHashID!(TransactionID, transaction_id);
-ImplHashID!(AttestationID, attestation_id);
+impl_hash_id!(Hash256, hash_256);
+impl_hash_id!(BlockID, block_id);
+impl_hash_id!(SiacoinOutputID, siacoin_id);
+impl_hash_id!(SiafundOutputID, siafund_id);
+impl_hash_id!(FileContractID, contract_id);
+impl_hash_id!(TransactionID, transaction_id);
+impl_hash_id!(AttestationID, attestation_id);
 
 #[derive(Debug, PartialEq, SiaEncode, SiaDecode, Serialize, Deserialize)]
-
 pub struct ChainIndex {
     pub height: u64,
     pub id: BlockID,
@@ -382,48 +189,6 @@ impl fmt::Display for Address {
     }
 }
 
-/// address is a helper macro to create an Address from a string literal.
-/// The string literal must be a valid 76-character hex-encoded string.
-/// This is not exported outside of the crate because the address checksum
-/// is not validated, it is assumed to be correct.
-macro_rules! address {
-    ($text:expr) => {{
-        const fn decode_hex_char(c: u8) -> Option<u8> {
-            match c {
-                b'0'..=b'9' => Some(c - b'0'),
-                b'a'..=b'f' => Some(c - b'a' + 10),
-                b'A'..=b'F' => Some(c - b'A' + 10),
-                _ => None,
-            }
-        }
-
-        const fn decode_hex_pair(hi: u8, lo: u8) -> Option<u8> {
-            let hi = decode_hex_char(hi);
-            let lo = decode_hex_char(lo);
-            match ((hi, lo)) {
-                (Some(hi), Some(lo)) => Some(hi << 4 | lo),
-                _ => None,
-            }
-        }
-
-        let src = $text.as_bytes();
-        let len = src.len();
-        assert!(len == 76, "invalid address length");
-        let mut data = [0u8; 32];
-        let mut i = 0;
-        while i < 64 {
-            let pair = decode_hex_pair(src[i], src[i + 1]);
-            match pair {
-                Some(byte) => data[i / 2] = byte,
-                None => assert!(false, "invalid hex character"),
-            }
-            i += 2;
-        }
-        Address::new(data)
-    }};
-}
-pub(crate) use address;
-
 /// A SiacoinOutput is a Siacoin UTXO that can be spent using the unlock conditions
 /// for Address
 #[derive(
@@ -524,12 +289,16 @@ pub struct StateElement {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::address;
 
     #[test]
     fn test_address_macro() {
+        // 5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34
         const ADDRESS: &str =
             "5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34";
-        let s = address!(ADDRESS);
+        let s = address!(
+            "5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34"
+        );
         assert_eq!(s.to_string(), ADDRESS);
     }
 

@@ -623,4 +623,9 @@ mod tests {
             assert_eq!(deserialized_binary, *policy, "test case {}", i);
         }
     }
+
+    #[test]
+    fn test_satisfied_policy_encoding() {
+        // let test_cases = vec![];
+    }
 }
