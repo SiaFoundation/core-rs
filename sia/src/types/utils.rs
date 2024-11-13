@@ -234,3 +234,19 @@ pub(crate) mod vec_base64 {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::Address;
+
+    #[test]
+    fn test_address_macro() {
+        const ADDRESS: &str =
+            "5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34";
+        let s = address!(
+            "5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34"
+        );
+        assert_eq!(s.to_string(), ADDRESS);
+    }
+}

@@ -289,18 +289,6 @@ pub struct StateElement {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::address;
-
-    #[test]
-    fn test_address_macro() {
-        // 5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34
-        const ADDRESS: &str =
-            "5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34";
-        let s = address!(
-            "5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34"
-        );
-        assert_eq!(s.to_string(), ADDRESS);
-    }
 
     #[test]
     fn test_serialize_hash256() {
