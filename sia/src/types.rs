@@ -7,7 +7,6 @@ mod utils;
 pub use common::*;
 pub use currency::*;
 pub use specifier::*;
-pub(crate) use utils::*;
 
 pub mod v1;
 pub mod v2;

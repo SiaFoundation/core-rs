@@ -9,7 +9,8 @@ use crate::encoding::{
     V1SiaEncodable, V1SiaEncode,
 };
 use crate::types::currency::Currency;
-use crate::types::{impl_hash_id, v1, v2};
+use crate::macros::impl_hash_id;
+use crate::types::{v1, v2};
 
 impl_hash_id!(Hash256);
 impl_hash_id!(BlockID);

@@ -270,7 +270,7 @@ pub struct TransactionSignature {
     pub public_key_index: u64,
     pub timelock: u64,
     pub covered_fields: CoveredFields,
-    #[serde(with = "crate::types::base64")]
+    #[serde(with = "crate::types::utils::base64")]
     pub signature: Vec<u8>,
 }
 
@@ -296,7 +296,7 @@ pub struct Transaction {
     #[serde(
         default,
         skip_serializing_if = "Vec::is_empty",
-        with = "crate::types::vec_base64"
+        with = "crate::types::utils::vec_base64"
     )]
     pub arbitrary_data: Vec<Vec<u8>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

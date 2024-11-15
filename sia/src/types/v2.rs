@@ -30,7 +30,7 @@ pub use super::spendpolicy::*;
 pub struct Attestation {
     pub public_key: PublicKey,
     pub key: String,
-    #[serde(with = "crate::types::base64")]
+    #[serde(with = "crate::types::utils::base64")]
     pub value: Vec<u8>,
 
     pub signature: Signature,
@@ -469,7 +469,7 @@ pub struct Transaction {
     pub file_contract_resolutions: Vec<FileContractResolution>,
     #[serde(default)]
     pub attestations: Vec<Attestation>,
-    #[serde(default, with = "crate::types::base64")]
+    #[serde(default, with = "crate::types::utils::base64")]
     pub arbitrary_data: Vec<u8>,
     pub new_foundation_address: Option<Address>,
     pub miner_fee: Currency,
