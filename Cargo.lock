@@ -777,13 +777,13 @@ dependencies = [
  "serde-big-array",
  "serde_json",
  "sha2",
- "sia_sdk_macros",
+ "sia_sdk_derive",
  "thiserror",
  "time",
 ]
 
 [[package]]
-name = "sia_sdk_macros"
+name = "sia_sdk_derive"
 version = "0.0.1"
 dependencies = [
  "proc-macro2",
