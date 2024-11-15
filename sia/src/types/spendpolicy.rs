@@ -391,25 +391,16 @@ impl SiaDecodable for SpendPolicy {
 /// A policy that has been satisfied by a set of preimages and signatures.
 pub struct SatisfiedPolicy {
     pub policy: SpendPolicy,
-    #[serde(default)]
-    pub preimages: Vec<Vec<u8>>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub signatures: Vec<Signature>,
-}
-
-impl SatisfiedPolicy {
-    /// Create a new satisfied policy from a policy, preimages, and signatures.
-    pub fn new(policy: SpendPolicy, preimages: Vec<Vec<u8>>, signatures: Vec<Signature>) -> Self {
-        Self {
-            policy,
-            preimages,
-            signatures,
-        }
-    }
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub preimages: Vec<Hash256>,
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::{hash_256, public_key};
+
     use super::*;
 
     #[test]
@@ -626,13 +617,78 @@ mod tests {
 
     #[test]
     fn test_satisfied_policy_encoding() {
-        /*
-        {"policy":{"type":"pk","policy":"ed25519:3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"},"signatures":["867c405977a52caf455221d49ea6242584221ab7f6b1a3e5a7e515d1f4027852e641330366fbd93950e5d15d7153c288a7d96462db912235129725bf13b2a30c"]}
-        {"policy":{"type":"thresh","policy":{"n":1,"of":[{"type":"pk","policy":"ed25519:3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"},{"type":"h","policy":"0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8"}]}},"signatures":["867c405977a52caf455221d49ea6242584221ab7f6b1a3e5a7e515d1f4027852e641330366fbd93950e5d15d7153c288a7d96462db912235129725bf13b2a30c"],"preimages":["0102030000000000000000000000000000000000000000000000000000000000"]}
-        {"policy":{"type":"h","policy":"0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8"},"preimages":["0405060000000000000000000000000000000000000000000000000000000000"]}
-        {"policy":{"type":"pk","policy":"ed25519:3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"}}
-        {"policy":{"type":"h","policy":"0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8"}}
-        */
-        // let test_cases = vec![];
+        struct TestCase {
+            policy: SatisfiedPolicy,
+            json: &'static str,
+            binary: &'static str,
+        }
+        let test_cases = vec![
+        TestCase{
+            policy: SatisfiedPolicy{
+                policy: SpendPolicy::public_key(public_key!("ed25519:3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29")),
+                signatures: vec![Signature::parse_string("867c405977a52caf455221d49ea6242584221ab7f6b1a3e5a7e515d1f4027852e641330366fbd93950e5d15d7153c288a7d96462db912235129725bf13b2a30c").unwrap()],
+                preimages: vec![],
+            },
+            json: "{\"policy\":{\"type\":\"pk\",\"policy\":\"ed25519:3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29\"},\"signatures\":[\"867c405977a52caf455221d49ea6242584221ab7f6b1a3e5a7e515d1f4027852e641330366fbd93950e5d15d7153c288a7d96462db912235129725bf13b2a30c\"]}",
+            binary: "01033b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da290100000000000000867c405977a52caf455221d49ea6242584221ab7f6b1a3e5a7e515d1f4027852e641330366fbd93950e5d15d7153c288a7d96462db912235129725bf13b2a30c0000000000000000",
+        },
+        TestCase{
+            policy: SatisfiedPolicy{
+                policy: SpendPolicy::threshold(1, vec![
+                    SpendPolicy::public_key(public_key!("ed25519:3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29")),
+                    SpendPolicy::hash(hash_256!("0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8")),
+                ]),
+                signatures: vec![Signature::parse_string("867c405977a52caf455221d49ea6242584221ab7f6b1a3e5a7e515d1f4027852e641330366fbd93950e5d15d7153c288a7d96462db912235129725bf13b2a30c").unwrap()],
+                preimages: vec![hash_256!("0102030000000000000000000000000000000000000000000000000000000000")],
+            },
+            json: "{\"policy\":{\"type\":\"thresh\",\"policy\":{\"n\":1,\"of\":[{\"policy\":\"ed25519:3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29\",\"type\":\"pk\"},{\"policy\":\"0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8\",\"type\":\"h\"}]}},\"signatures\":[\"867c405977a52caf455221d49ea6242584221ab7f6b1a3e5a7e515d1f4027852e641330366fbd93950e5d15d7153c288a7d96462db912235129725bf13b2a30c\"],\"preimages\":[\"0102030000000000000000000000000000000000000000000000000000000000\"]}",
+            binary: "01050102033b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29040e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a80100000000000000867c405977a52caf455221d49ea6242584221ab7f6b1a3e5a7e515d1f4027852e641330366fbd93950e5d15d7153c288a7d96462db912235129725bf13b2a30c01000000000000000102030000000000000000000000000000000000000000000000000000000000",
+        },
+        TestCase{
+            policy: SatisfiedPolicy{
+                policy: SpendPolicy::hash(hash_256!("0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8")),
+                signatures: vec![],
+                preimages: vec![hash_256!("0405060000000000000000000000000000000000000000000000000000000000")],
+            },
+            json: "{\"policy\":{\"type\":\"h\",\"policy\":\"0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8\"},\"preimages\":[\"0405060000000000000000000000000000000000000000000000000000000000\"]}",
+            binary: "01040e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8000000000000000001000000000000000405060000000000000000000000000000000000000000000000000000000000",
+        },
+        TestCase{
+            policy: SatisfiedPolicy{
+                policy: SpendPolicy::public_key(public_key!("ed25519:3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29")),
+                signatures: vec![],
+                preimages: vec![],
+            },
+            json: "{\"policy\":{\"type\":\"pk\",\"policy\":\"ed25519:3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29\"}}",
+            binary: "01033b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da2900000000000000000000000000000000",
+        },
+        TestCase{
+            policy: SatisfiedPolicy{
+                policy: SpendPolicy::hash(hash_256!("0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8")),
+                signatures: vec![],
+                preimages: vec![],
+            },
+            json: "{\"policy\":{\"type\":\"h\",\"policy\":\"0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8\"}}",
+            binary: "01040e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a800000000000000000000000000000000",
+        }
+        ];
+
+        for tc in test_cases {
+            let mut serialized = Vec::new();
+            tc.policy.encode(&mut serialized).unwrap();
+            assert_eq!(
+                hex::encode(serialized.clone()),
+                tc.binary,
+                "binary serialization failed"
+            );
+            let deserialized = SatisfiedPolicy::decode(&mut &serialized[..]).unwrap();
+            assert_eq!(deserialized, tc.policy, "binary deserialization failed");
+
+            // json
+            let serialized = serde_json::to_string(&tc.policy).unwrap();
+            assert_eq!(serialized, tc.json, "json serialization failed");
+            let deserialized: SatisfiedPolicy = serde_json::from_str(&tc.json).unwrap();
+            assert_eq!(deserialized, tc.policy, "json deserialization failed");
+        }
     }
 }
