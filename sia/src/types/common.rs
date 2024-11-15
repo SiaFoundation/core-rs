@@ -8,8 +8,8 @@ use crate::encoding::{
     self, SiaDecodable, SiaDecode, SiaEncodable, SiaEncode, V1SiaDecodable, V1SiaDecode,
     V1SiaEncodable, V1SiaEncode,
 };
-use crate::types::currency::Currency;
 use crate::macros::impl_hash_id;
+use crate::types::currency::Currency;
 use crate::types::{v1, v2};
 
 impl_hash_id!(Hash256);

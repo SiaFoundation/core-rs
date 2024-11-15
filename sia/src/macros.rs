@@ -1,4 +1,3 @@
-
 // Macro to implement types used as identifiers which are 32 byte hashes and are
 // serialized with a prefix
 macro_rules! impl_hash_id {
