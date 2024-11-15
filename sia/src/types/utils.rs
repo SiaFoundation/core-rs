@@ -42,3 +42,17 @@ pub(crate) mod vec_base64 {
             .collect()
     }
 }
+
+pub(crate) mod nano_second_duration {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use time::Duration;
+
+    pub fn serialize<S: Serializer>(v: &Duration, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_u64(v.whole_nanoseconds() as u64)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Duration, D::Error> {
+        let nanos = u64::deserialize(d)?;
+        Ok(Duration::nanoseconds(nanos as i64))
+    }
+}

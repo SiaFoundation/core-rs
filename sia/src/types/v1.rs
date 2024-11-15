@@ -1031,7 +1031,7 @@ mod tests {
                 foundation_failsafe_address: Address::new([0u8; 32]),
             },
             network: Network {
-                name: "test",
+                name: "test".to_string(),
                 initial_coinbase: Currency::new(0),
                 minimum_coinbase: Currency::new(0),
                 initial_target: BlockID::default(),
@@ -1502,7 +1502,7 @@ mod tests {
                 foundation_failsafe_address: Address::new([0u8; 32]),
             },
             network: Network {
-                name: "test",
+                name: "test".to_string(),
                 initial_coinbase: Currency::new(0),
                 minimum_coinbase: Currency::new(0),
                 initial_target: BlockID::default(),
