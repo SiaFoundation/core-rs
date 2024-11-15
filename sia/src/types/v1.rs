@@ -534,9 +534,8 @@ mod tests {
     };
     use crate::seed::Seed;
     use crate::signing::{PrivateKey, PublicKey, Signature};
-    use crate::types::{
-        address, contract_id, hash_256, siacoin_id, siafund_id, BlockID, ChainIndex,
-    };
+    use crate::types::{BlockID, ChainIndex};
+    use crate::{address, contract_id, hash_256, siacoin_id, siafund_id};
     use serde::de::DeserializeOwned;
     use std::fmt::Debug;
     use std::vec;
@@ -1072,32 +1071,32 @@ mod tests {
             157, 52, 25, 242, 96, 131, 16, 187, 22, 232, 107, 17, 205,
         ]);
         let test_cases = vec![
-			(
-				Transaction {
-					siacoin_inputs: vec![
-						SiacoinInput{
-							parent_id: SiacoinOutputID::from([32,11,215,36,166,174,135,0,92,215,179,18,74,229,52,154,221,194,213,216,219,47,225,205,251,84,248,2,69,252,37,117]),
-							unlock_conditions: UnlockConditions::standard_unlock_conditions(pk.public_key()),
-						}
-					],
-					siacoin_outputs: vec![
-						SiacoinOutput{
-							value: Currency::new(67856467336433871),
-							address: address!("000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69"),
-						}
-					],
-					file_contracts: Vec::new(),
-					file_contract_revisions: Vec::new(),
-					storage_proofs: Vec::new(),
-					siafund_inputs: Vec::new(),
-					siafund_outputs: Vec::new(),
-					miner_fees: Vec::new(),
-					arbitrary_data: Vec::new(),
-					signatures: Vec::new(),
-				},
-				"7a5db98318b5ecad2954d41ba2084c908823ebf4000b95543f352478066a0d04bf4829e3e6d086b42ff9d943f68981c479798fd42bf6f63dac254f4294a37609"
-			)
-		];
+            (
+                Transaction {
+                    siacoin_inputs: vec![
+                        SiacoinInput{
+                            parent_id: SiacoinOutputID::from([32,11,215,36,166,174,135,0,92,215,179,18,74,229,52,154,221,194,213,216,219,47,225,205,251,84,248,2,69,252,37,117]),
+                            unlock_conditions: UnlockConditions::standard_unlock_conditions(pk.public_key()),
+                        }
+                    ],
+                    siacoin_outputs: vec![
+                        SiacoinOutput{
+                            value: Currency::new(67856467336433871),
+                            address: address!("000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69"),
+                        }
+                    ],
+                    file_contracts: Vec::new(),
+                    file_contract_revisions: Vec::new(),
+                    storage_proofs: Vec::new(),
+                    siafund_inputs: Vec::new(),
+                    siafund_outputs: Vec::new(),
+                    miner_fees: Vec::new(),
+                    arbitrary_data: Vec::new(),
+                    signatures: Vec::new(),
+                },
+                "7a5db98318b5ecad2954d41ba2084c908823ebf4000b95543f352478066a0d04bf4829e3e6d086b42ff9d943f68981c479798fd42bf6f63dac254f4294a37609"
+            )
+        ];
 
         for (txn, expected) in test_cases {
             let sig = txn

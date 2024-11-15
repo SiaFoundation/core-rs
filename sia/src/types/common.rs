@@ -11,13 +11,13 @@ use crate::encoding::{
 use crate::types::currency::Currency;
 use crate::types::{impl_hash_id, v1, v2};
 
-impl_hash_id!(Hash256, hash_256);
-impl_hash_id!(BlockID, block_id);
-impl_hash_id!(SiacoinOutputID, siacoin_id);
-impl_hash_id!(SiafundOutputID, siafund_id);
-impl_hash_id!(FileContractID, contract_id);
-impl_hash_id!(TransactionID, transaction_id);
-impl_hash_id!(AttestationID, attestation_id);
+impl_hash_id!(Hash256);
+impl_hash_id!(BlockID);
+impl_hash_id!(SiacoinOutputID);
+impl_hash_id!(SiafundOutputID);
+impl_hash_id!(FileContractID);
+impl_hash_id!(TransactionID);
+impl_hash_id!(AttestationID);
 
 #[derive(Debug, PartialEq, SiaEncode, SiaDecode, Serialize, Deserialize)]
 pub struct ChainIndex {

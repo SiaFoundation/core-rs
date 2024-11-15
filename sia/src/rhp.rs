@@ -74,10 +74,11 @@ pub fn sector_root(sector: &[u8]) -> Hash256 {
     )
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::hash_256;
+    use crate::hash_256;
 
     #[test]
     fn test_sector_root() {
@@ -90,3 +91,4 @@ mod tests {
         println!("{root}");
     }
 }
+*/

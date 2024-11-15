@@ -626,6 +626,13 @@ mod tests {
 
     #[test]
     fn test_satisfied_policy_encoding() {
+        /*
+        {"policy":{"type":"pk","policy":"ed25519:3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"},"signatures":["867c405977a52caf455221d49ea6242584221ab7f6b1a3e5a7e515d1f4027852e641330366fbd93950e5d15d7153c288a7d96462db912235129725bf13b2a30c"]}
+        {"policy":{"type":"thresh","policy":{"n":1,"of":[{"type":"pk","policy":"ed25519:3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"},{"type":"h","policy":"0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8"}]}},"signatures":["867c405977a52caf455221d49ea6242584221ab7f6b1a3e5a7e515d1f4027852e641330366fbd93950e5d15d7153c288a7d96462db912235129725bf13b2a30c"],"preimages":["0102030000000000000000000000000000000000000000000000000000000000"]}
+        {"policy":{"type":"h","policy":"0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8"},"preimages":["0405060000000000000000000000000000000000000000000000000000000000"]}
+        {"policy":{"type":"pk","policy":"ed25519:3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"}}
+        {"policy":{"type":"h","policy":"0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8"}}
+        */
         // let test_cases = vec![];
     }
 }

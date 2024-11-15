@@ -1,74 +1,52 @@
-#[inline]
-/// decode_hex_const is a helper func to parse a hex string intended to be used for compile-time literals
-/// input length is not validated to support addresses.
-pub(crate) const fn decode_hex_bytes<const N: usize>(input: &[u8]) -> [u8; N] {
-    const fn decode_hex_char(c: u8) -> Option<u8> {
-        match c {
-            b'0'..=b'9' => Some(c - b'0'),
-            b'a'..=b'f' => Some(c - b'a' + 10),
-            b'A'..=b'F' => Some(c - b'A' + 10),
-            _ => None,
-        }
+/// helper module for base64 serialization
+pub(crate) mod base64 {
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(v: &[u8], s: S) -> Result<S::Ok, S::Error> {
+        let base64 = STANDARD.encode(v);
+        s.serialize_str(&base64)
     }
 
-    const fn decode_hex_pair(hi: u8, lo: u8) -> Option<u8> {
-        let hi = decode_hex_char(hi);
-        let lo = decode_hex_char(lo);
-        match (hi, lo) {
-            (Some(hi), Some(lo)) => Some(hi << 4 | lo),
-            _ => None,
-        }
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
+        let base64 = String::deserialize(d)?;
+        STANDARD
+            .decode(base64.as_bytes())
+            .map_err(|e| serde::de::Error::custom(e.to_string()))
     }
-
-    let mut result = [0u8; N];
-    let mut i = 0;
-    while i < N * 2 {
-        match decode_hex_pair(input[i], input[i + 1]) {
-            Some(byte) => result[i / 2] = byte,
-            None => panic!("invalid hex char"),
-        }
-        i += 2;
-    }
-    result
 }
 
-#[allow(dead_code)] // I promise it's used
-pub(crate) const fn valid_hex_bytes(input: &[u8]) -> bool {
-    let mut i = 0;
-    while i < input.len() {
-        match input[i] {
-            b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F' => (),
-            _ => return false,
-        }
-        i += 1;
-    }
-    true
-}
+/// helper module for Vec<Vec<u8>> base64 serialization
+pub(crate) mod vec_base64 {
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine as _;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-/// address is a helper macro to create an Address from a string literal.
-/// The string literal must be a valid 76-character hex-encoded string.
-/// The checksum of the address is not validated.
-macro_rules! address {
-    ($text:literal) => {{
-        const _VALIDATE: () = {
-            assert!($text.len() == 76, "incorrect number of chars");
-            assert!(
-                $crate::types::valid_hex_bytes($text.as_bytes()),
-                "invalid hex chars"
-            );
-        };
-        Address::new($crate::types::decode_hex_bytes::<32>($text.as_bytes()))
-    }};
-    () => {
-        compile_error!("unsupported address macro usage")
-    };
+    pub fn serialize<S>(v: &[Vec<u8>], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let encoded: Vec<String> = v.iter().map(|bytes| STANDARD.encode(bytes)).collect();
+        encoded.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<Vec<u8>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let encoded: Vec<String> = Vec::deserialize(deserializer)?;
+        encoded
+            .into_iter()
+            .map(|s| STANDARD.decode(s).map_err(serde::de::Error::custom))
+            .collect()
+    }
 }
-pub(crate) use address;
 
 // Macro to implement types used as identifiers which are 32 byte hashes and are
 // serialized with a prefix
 macro_rules! impl_hash_id {
-    ($name:ident, $create_macro_name:ident) => {
+    ($name:ident) => {
         #[derive(
             Debug,
             Clone,
@@ -167,79 +145,127 @@ macro_rules! impl_hash_id {
                 $name([0; 32])
             }
         }
-
-        #[allow(unused_macros)]
-        macro_rules! $create_macro_name {
-            ($text:literal) => {{
-                const _VALIDATE: () = {
-                    assert!($text.len() == 64, "expected 64 characters");
-                    assert!(
-                        $crate::types::valid_hex_bytes($text.as_bytes()),
-                        "invalid hex literal"
-                    );
-                };
-                $name::new($crate::types::decode_hex_bytes::<32>($text.as_bytes()))
-            }};
-            () => {
-                compile_error!("unsupported macro usage")
-            };
-        }
-        #[allow(unused)]
-        pub(crate) use $create_macro_name;
     };
 }
 pub(crate) use impl_hash_id;
 
-/// helper module for base64 serialization
-pub(crate) mod base64 {
-    use base64::engine::general_purpose::STANDARD;
-    use base64::Engine;
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(v: &[u8], s: S) -> Result<S::Ok, S::Error> {
-        let base64 = STANDARD.encode(v);
-        s.serialize_str(&base64)
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
-        let base64 = String::deserialize(d)?;
-        STANDARD
-            .decode(base64.as_bytes())
-            .map_err(|e| serde::de::Error::custom(e.to_string()))
+#[inline]
+pub(crate) const fn decode_hex_char(c: u8) -> Option<u8> {
+    match c {
+        b'0'..=b'9' => Some(c - b'0'),
+        b'a'..=b'f' => Some(c - b'a' + 10),
+        b'A'..=b'F' => Some(c - b'A' + 10),
+        _ => None,
     }
 }
 
-/// helper module for Vec<Vec<u8>> base64 serialization
-pub(crate) mod vec_base64 {
-    use base64::engine::general_purpose::STANDARD;
-    use base64::Engine as _;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-    pub fn serialize<S>(v: &[Vec<u8>], serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let encoded: Vec<String> = v.iter().map(|bytes| STANDARD.encode(bytes)).collect();
-        encoded.serialize(serializer)
+#[inline]
+#[doc(hidden)]
+pub(crate) const fn decode_hex_pair(hi: u8, lo: u8) -> Option<u8> {
+    let hi = decode_hex_char(hi);
+    let lo = decode_hex_char(lo);
+    match (hi, lo) {
+        (Some(hi), Some(lo)) => Some(hi << 4 | lo),
+        _ => None,
     }
+}
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<Vec<u8>>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let encoded: Vec<String> = Vec::deserialize(deserializer)?;
-        encoded
-            .into_iter()
-            .map(|s| STANDARD.decode(s).map_err(serde::de::Error::custom))
-            .collect()
+#[inline]
+#[doc(hidden)]
+pub(crate) const fn decode_hex_256(input: &[u8]) -> [u8; 32] {
+    let mut result = [0u8; 32];
+    let mut i = 0;
+    while i < 64 {
+        match decode_hex_pair(input[i], input[i + 1]) {
+            Some(byte) => result[i / 2] = byte,
+            None => panic!("invalid hex char"),
+        }
+        i += 2;
     }
+    result
+}
+
+/// A macro to create an Address from a literal hex string. The string must be 76 characters long.
+///
+/// The checksum is not verified.
+#[macro_export]
+macro_rules! address {
+    ($text:literal) => {{
+        if $text.len() != 76 {
+            panic!("Address must be 76 characters");
+        }
+        $crate::types::Address::new($crate::types::decode_hex_256($text.as_bytes()))
+    }};
+}
+
+/// A macro to create a Hash256 from a literal hex string. The string must be 64 characters long.
+#[macro_export]
+macro_rules! hash_256 {
+    ($text:literal) => {{
+        if $text.len() != 64 {
+            panic!("Hash256 must be 64 characters");
+        }
+        $crate::types::Hash256::new($crate::types::decode_hex_256($text.as_bytes()))
+    }};
+}
+
+/// A macro to create a SiacoinOutputID from a literal hex string. The string must be 64 characters long.
+#[macro_export]
+macro_rules! siacoin_id {
+    ($text:literal) => {{
+        if $text.len() != 64 {
+            panic!("SiacoinOutputID must be 64 characters");
+        }
+        $crate::types::SiacoinOutputID::new($crate::types::decode_hex_256($text.as_bytes()))
+    }};
+}
+
+/// A macro to create a SiafundOutputID from a literal hex string. The string must be 64 characters long.
+#[macro_export]
+macro_rules! siafund_id {
+    ($text:literal) => {{
+        if $text.len() != 64 {
+            panic!("SiafundOutputID must be 64 characters");
+        }
+        $crate::types::SiafundOutputID::new($crate::types::decode_hex_256($text.as_bytes()))
+    }};
+}
+
+/// A macro to create a FileContractID from a literal hex string. The string must be 64 characters long.
+#[macro_export]
+macro_rules! contract_id {
+    ($text:literal) => {{
+        if $text.len() != 64 {
+            panic!("FileContractID must be 64 characters");
+        }
+        $crate::types::FileContractID::new($crate::types::decode_hex_256($text.as_bytes()))
+    }};
+}
+
+/// A macro to create a TransactionID from a literal hex string. The string must be 64 characters long.
+#[macro_export]
+macro_rules! transaction_id {
+    ($text:literal) => {{
+        if $text.len() != 64 {
+            panic!("TransactionID must be 64 characters");
+        }
+        $crate::types::TransactionID::new($crate::types::decode_hex_256($text.as_bytes()))
+    }};
+}
+
+/// A macro to create a BlockID from a literal hex string. The string must be 64 characters long.
+#[macro_export]
+macro_rules! block_id {
+    ($text:literal) => {{
+        if $text.len() != 64 {
+            panic!("BlockID must be 64 characters");
+        }
+        $crate::types::BlockID::new($crate::types::decode_hex_256($text.as_bytes()))
+    }};
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::types::Address;
-
     #[test]
     fn test_address_macro() {
         const ADDRESS: &str =
