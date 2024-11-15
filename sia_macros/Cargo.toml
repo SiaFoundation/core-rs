@@ -1,5 +1,5 @@
 [package]
-name = "sia_sdk_derive"
+name = "sia_sdk_macros"
 version = "0.0.1"
 edition = "2021"
 repository = "https://github.com/SiaFoundation/sia-sdk-rs"
@@ -11,6 +11,7 @@ keywords = ["sia", "decentralized", "blockchain", "depin", "storage"]
 
 [lib]
 proc-macro = true
+name = "macros"
 
 [dependencies]
 syn = "2.0"
