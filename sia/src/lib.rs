@@ -5,5 +5,5 @@ pub mod seed;
 pub mod signing;
 pub mod types;
 
-pub(crate) mod macros;
+pub mod macros;
 pub(crate) mod merkle;

@@ -115,7 +115,6 @@ pub(crate) const fn decode_hex_char(c: u8) -> Option<u8> {
 }
 
 #[inline]
-#[doc(hidden)]
 pub(crate) const fn decode_hex_pair(hi: u8, lo: u8) -> Option<u8> {
     let hi = decode_hex_char(hi);
     let lo = decode_hex_char(lo);
@@ -127,7 +126,7 @@ pub(crate) const fn decode_hex_pair(hi: u8, lo: u8) -> Option<u8> {
 
 #[inline]
 #[doc(hidden)]
-pub(crate) const fn decode_hex_256(input: &[u8]) -> [u8; 32] {
+pub const fn decode_hex_256(input: &[u8]) -> [u8; 32] {
     let mut result = [0u8; 32];
     let mut i = 0;
     while i < 64 {
@@ -143,6 +142,12 @@ pub(crate) const fn decode_hex_256(input: &[u8]) -> [u8; 32] {
 /// A macro to create an Address from a literal hex string. The string must be 76 characters long.
 ///
 /// The checksum is not verified.
+/// ```
+/// use sia::types::Address;
+/// use sia::address;
+///
+/// const addr: Address = address!("8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0");
+/// ```
 #[macro_export]
 macro_rules! address {
     ($text:literal) => {{
@@ -154,6 +159,13 @@ macro_rules! address {
 }
 
 /// A macro to create a Hash256 from a literal hex string. The string must be 64 characters long.
+///
+/// ```
+/// use sia::types::Hash256;
+/// use sia::hash_256;
+///
+/// const h: Hash256 = hash_256!("8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c");
+/// ```
 #[macro_export]
 macro_rules! hash_256 {
     ($text:literal) => {{
@@ -165,6 +177,13 @@ macro_rules! hash_256 {
 }
 
 /// A macro to create a SiacoinOutputID from a literal hex string. The string must be 64 characters long.
+///
+///```
+/// use sia::types::SiacoinOutputID;
+/// use sia::siacoin_id;
+///
+/// const scoid: SiacoinOutputID = siacoin_id!("8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c");
+/// ```
 #[macro_export]
 macro_rules! siacoin_id {
     ($text:literal) => {{
@@ -176,6 +195,13 @@ macro_rules! siacoin_id {
 }
 
 /// A macro to create a SiafundOutputID from a literal hex string. The string must be 64 characters long.
+///
+/// ```
+/// use sia::types::SiafundOutputID;
+/// use sia::siafund_id;
+///
+/// const sfoid: SiafundOutputID = siafund_id!("8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c");
+/// ```
 #[macro_export]
 macro_rules! siafund_id {
     ($text:literal) => {{
@@ -187,6 +213,13 @@ macro_rules! siafund_id {
 }
 
 /// A macro to create a FileContractID from a literal hex string. The string must be 64 characters long.
+///
+/// ```
+/// use sia::types::FileContractID;
+/// use sia::contract_id;
+///
+/// const fcid: FileContractID = contract_id!("8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c");
+/// ```
 #[macro_export]
 macro_rules! contract_id {
     ($text:literal) => {{
@@ -198,6 +231,13 @@ macro_rules! contract_id {
 }
 
 /// A macro to create a TransactionID from a literal hex string. The string must be 64 characters long.
+///
+/// ```
+/// use sia::types::TransactionID;
+/// use sia::transaction_id;
+///
+/// const txid: TransactionID = transaction_id!("8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c");
+/// ```
 #[macro_export]
 macro_rules! transaction_id {
     ($text:literal) => {{
@@ -209,6 +249,13 @@ macro_rules! transaction_id {
 }
 
 /// A macro to create a BlockID from a literal hex string. The string must be 64 characters long.
+///
+/// ```
+/// use sia::types::BlockID;
+/// use sia::block_id;
+///
+/// const bid: BlockID = block_id!("8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c");
+/// ```
 #[macro_export]
 macro_rules! block_id {
     ($text:literal) => {{
@@ -219,6 +266,14 @@ macro_rules! block_id {
     }};
 }
 
+/// A macro to create a PublicKey from a literal hex string. The string must be 72 characters long and start with "ed25519:".
+///
+/// ```
+/// use sia::signing::PublicKey;
+/// use sia::public_key;
+///
+/// const pk: PublicKey = public_key!("ed25519:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c");
+/// ```
 #[macro_export]
 macro_rules! public_key {
     ($text:literal) => {{
