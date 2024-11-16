@@ -36,12 +36,15 @@ impl fmt::Display for ChainIndex {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Block {
+    #[serde(rename="parentID")]
     pub parent_id: BlockID,
     pub nonce: u64,
+    #[serde(with = "time::serde::rfc3339")]
     pub timestamp: OffsetDateTime,
     pub miner_payouts: Vec<SiacoinOutput>,
     pub transactions: Vec<v1::Transaction>,
 
+    #[serde(skip_serializing_if="Option::is_none")]
     pub v2: Option<v2::BlockData>,
 }
 
@@ -70,25 +73,16 @@ impl V1SiaDecodable for Block {
 
 impl SiaEncodable for Block {
     fn encode<W: std::io::Write>(&self, w: &mut W) -> encoding::Result<()> {
-        self.parent_id.encode(w)?;
-        self.nonce.encode(w)?;
-        self.timestamp.encode(w)?;
-        self.miner_payouts.encode_v1(w)?;
-        self.transactions.encode_v1(w)?;
+        self.encode_v1(w)?;
         self.v2.encode(w)
     }
 }
 
 impl SiaDecodable for Block {
     fn decode<R: std::io::Read>(r: &mut R) -> encoding::Result<Self> {
-        Ok(Block {
-            parent_id: BlockID::decode(r)?,
-            nonce: u64::decode(r)?,
-            timestamp: OffsetDateTime::decode(r)?,
-            miner_payouts: Vec::<SiacoinOutput>::decode_v1(r)?,
-            transactions: Vec::<v1::Transaction>::decode_v1(r)?,
-            v2: Option::<v2::BlockData>::decode(r)?,
-        })
+        let mut b = Block::decode_v1(r)?;
+        b.v2 = Option::<v2::BlockData>::decode(r)?;
+        Ok(b)
     }
 }
 
@@ -289,6 +283,8 @@ pub struct StateElement {
 
 #[cfg(test)]
 mod tests {
+    use crate::{address, block_id, public_key, siacoin_id};
+
     use super::*;
 
     #[test]
@@ -314,7 +310,9 @@ mod tests {
     fn test_serialize_address() {
         let addr_str = "8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c";
         let checksum = "df32abee86f0";
-        let address = Address(hex::decode(addr_str).unwrap().try_into().unwrap());
+        let address = address!(
+            "8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0"
+        );
 
         // binary
         let mut addr_serialized: Vec<u8> = Vec::new();
@@ -328,5 +326,58 @@ mod tests {
         let addr_deserialized: Address = serde_json::from_str(&addr_serialized).unwrap();
         assert_eq!(addr_serialized, format!("\"{0}{1}\"", addr_str, checksum)); // serialize
         assert_eq!(addr_deserialized, address); // deserialize
+    }
+
+    #[test]
+    fn test_serialize_block() {
+        let mut b = Block{
+            parent_id: block_id!("8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c"),
+            nonce: 1236112,
+            timestamp: OffsetDateTime::UNIX_EPOCH,
+            miner_payouts: vec![
+                SiacoinOutput{
+                    value: Currency::new(57234234623612361),
+                    address: address!("000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69"),
+                }
+            ],
+            transactions: vec![
+                v1::Transaction {
+                    siacoin_inputs: vec![
+                        v1::SiacoinInput{
+                            parent_id: siacoin_id!("8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c"),
+                            unlock_conditions: v1::UnlockConditions::standard_unlock_conditions(public_key!("ed25519:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c")),
+                        }
+                    ],
+                    siacoin_outputs: vec![
+                        SiacoinOutput{
+                            value: Currency::new(67856467336433871),
+                            address: address!("000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69"),
+                        }
+                    ],
+                    file_contracts: Vec::new(),
+                    file_contract_revisions: Vec::new(),
+                    storage_proofs: Vec::new(),
+                    siafund_inputs: Vec::new(),
+                    siafund_outputs: Vec::new(),
+                    miner_fees: Vec::new(),
+                    arbitrary_data: Vec::new(),
+                    signatures: Vec::new(),
+                },
+            ],
+            v2: None,
+        };
+
+        const BINARY_STR: &'static str = "8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c90dc120000000000000000000000000001000000000000000700000000000000cb563bafbb55c90000000000000000000000000000000000000000000000000000000000000000010000000000000001000000000000008fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c000000000000000001000000000000006564323535313900000000000000000020000000000000008fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c010000000000000001000000000000000700000000000000f11318f74d10cf000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+        let mut serialized = Vec::new();
+        b.encode_v1(&mut serialized).unwrap();
+        assert_eq!(serialized, hex::decode(BINARY_STR).unwrap());
+        let deserialized = Block::decode_v1(&mut &serialized[..]).unwrap();
+        assert_eq!(deserialized, b);
+
+        const JSON_STR: &'static str = "{\"parentID\":\"8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c\",\"nonce\":1236112,\"timestamp\":\"1970-01-01T00:00:00Z\",\"minerPayouts\":[{\"value\":\"57234234623612361\",\"address\":\"000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69\"}],\"transactions\":[{\"siacoinInputs\":[{\"parentID\":\"8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c\",\"unlockConditions\":{\"timelock\":0,\"publicKeys\":[\"ed25519:8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c\"],\"signaturesRequired\":1}}],\"siacoinOutputs\":[{\"value\":\"67856467336433871\",\"address\":\"000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69\"}]}]}";
+        let serialized = serde_json::to_string(&b).unwrap();
+        assert_eq!(serialized, JSON_STR);
+        let deserialized: Block = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, b);
     }
 }

@@ -46,7 +46,7 @@ impl fmt::Display for PublicKey {
 }
 
 impl PublicKey {
-    pub fn new(buf: [u8; 32]) -> Self {
+    pub const fn new(buf: [u8; 32]) -> Self {
         PublicKey(buf)
     }
 

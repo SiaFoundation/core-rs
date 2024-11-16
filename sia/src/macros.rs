@@ -222,24 +222,94 @@ macro_rules! block_id {
 #[macro_export]
 macro_rules! public_key {
     ($text:literal) => {{
-        if !$text.starts_with("ed25519:") {
-            panic!("PublicKey must start with ed25519:")
-        } else if $text.len() != 72 {
+        if $text.len() != 72 {
             panic!("PublicKey must be 72 characters");
         }
-        $crate::signing::PublicKey::new($crate::macros::decode_hex_256(&$text.as_bytes()[8..]))
+        const ED25519_PREFIX: &[u8; 8] = b"ed25519:";
+
+        let buf = $text.as_bytes();
+        let mut s = [0u8; 64];
+        let mut i = 0;
+        while i < 72 {
+            if i < 8 {
+                if buf[i] != ED25519_PREFIX[i] {
+                    panic!("PublicKey must start with ed25519:")
+                }
+            } else {
+                s[i - 8] = buf[i];
+            }
+            i += 1;
+        }
+
+        $crate::signing::PublicKey::new($crate::macros::decode_hex_256(&s))
     }};
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::signing::PublicKey;
+    use crate::types::{
+        Address, BlockID, FileContractID, SiacoinOutputID, SiafundOutputID, TransactionID,
+    };
+
+    const EXPECTED_BYTES: [u8; 32] = [
+        94, 183, 15, 20, 19, 135, 223, 30, 46, 205, 67, 75, 34, 190, 80, 191, 245, 122, 110, 8, 72,
+        79, 56, 144, 254, 68, 21, 166, 211, 35, 181, 233,
+    ];
+
     #[test]
     fn test_address_macro() {
-        const ADDRESS: &str =
-            "5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34";
-        let s = address!(
+        const ADDRESS: Address = address!(
             "5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4f79b34"
         );
-        assert_eq!(s.to_string(), ADDRESS);
+        assert_eq!(ADDRESS.as_ref(), EXPECTED_BYTES);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_bad_address() {
+        address!("5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9e758b4");
+    }
+
+    #[test]
+    fn test_public_key_macro() {
+        const PUBLIC_KEY: PublicKey =
+            public_key!("ed25519:5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9");
+        assert_eq!(PUBLIC_KEY.as_ref(), EXPECTED_BYTES);
+    }
+
+    #[test]
+    fn test_block_id_macro() {
+        const BLOCK_ID: BlockID =
+            block_id!("5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9");
+        assert_eq!(BLOCK_ID.as_ref(), EXPECTED_BYTES);
+    }
+
+    #[test]
+    fn test_transaction_id_macro() {
+        const TRANSACTION_ID: TransactionID =
+            transaction_id!("5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9");
+        assert_eq!(TRANSACTION_ID.as_ref(), EXPECTED_BYTES);
+    }
+
+    #[test]
+    fn test_contract_id_macro() {
+        const CONTRACT_ID: FileContractID =
+            contract_id!("5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9");
+        assert_eq!(CONTRACT_ID.as_ref(), EXPECTED_BYTES);
+    }
+
+    #[test]
+    fn test_siacoin_id_macro() {
+        const SIACOIN_ID: SiacoinOutputID =
+            siacoin_id!("5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9");
+        assert_eq!(SIACOIN_ID.as_ref(), EXPECTED_BYTES);
+    }
+
+    #[test]
+    fn test_siafund_id_macro() {
+        const SIAFUND_ID: SiafundOutputID =
+            siafund_id!("5eb70f141387df1e2ecd434b22be50bff57a6e08484f3890fe4415a6d323b5e9");
+        assert_eq!(SIAFUND_ID.as_ref(), EXPECTED_BYTES);
     }
 }
