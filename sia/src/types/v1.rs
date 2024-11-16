@@ -529,12 +529,12 @@ impl Transaction {
 mod tests {
     use super::*;
     use crate::consensus::{
-        HardforkASIC, HardforkDevAddr, HardforkFoundation, HardforkOak, HardforkStorageProof,
-        HardforkTax, HardforkV2, Network, State,
+        Elements, HardforkASIC, HardforkDevAddr, HardforkFoundation, HardforkOak,
+        HardforkStorageProof, HardforkTax, HardforkV2, Network, State,
     };
     use crate::seed::Seed;
     use crate::signing::{PrivateKey, PublicKey, Signature};
-    use crate::types::{BlockID, ChainIndex};
+    use crate::types::{BlockID, ChainIndex, Work};
     use crate::{address, contract_id, hash_256, siacoin_id, siafund_id};
     use serde::de::DeserializeOwned;
     use std::fmt::Debug;
@@ -1029,6 +1029,14 @@ mod tests {
                 oak_target: BlockID::default(),
                 foundation_primary_address: Address::new([0u8; 32]),
                 foundation_failsafe_address: Address::new([0u8; 32]),
+                total_work: Work::zero(),
+                difficulty: Work::zero(),
+                oak_work: Work::zero(),
+                attestations: 0,
+                elements: Elements {
+                    num_leaves: 0,
+                    trees: vec![],
+                },
             },
             network: Network {
                 name: "test".to_string(),
@@ -1500,6 +1508,14 @@ mod tests {
                 oak_target: BlockID::default(),
                 foundation_primary_address: Address::new([0u8; 32]),
                 foundation_failsafe_address: Address::new([0u8; 32]),
+                total_work: Work::zero(),
+                difficulty: Work::zero(),
+                oak_work: Work::zero(),
+                attestations: 0,
+                elements: Elements {
+                    num_leaves: 0,
+                    trees: vec![],
+                },
             },
             network: Network {
                 name: "test".to_string(),

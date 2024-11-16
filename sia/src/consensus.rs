@@ -1,9 +1,10 @@
 use crate::address;
 use serde::{Deserialize, Serialize};
+use sia_derive::{SiaDecode, SiaEncode};
 use time::{Duration, OffsetDateTime};
 
 use crate::encoding::{self, SiaDecodable, SiaEncodable};
-use crate::types::{Address, BlockID, ChainIndex, Currency, SiacoinOutput};
+use crate::types::{Address, BlockID, ChainIndex, Currency, Hash256, SiacoinOutput, Work};
 
 /// HardforkDevAddr contains the parameters for a hardfork that changed
 /// the developer address.
@@ -247,17 +248,26 @@ impl Network {
     }
 }
 
+#[derive(PartialEq, Debug, Serialize, Deserialize, SiaEncode, SiaDecode)]
+#[serde(rename_all = "camelCase")]
+pub struct Elements {
+    pub num_leaves: u64,
+    pub trees: Vec<Hash256>, // note: this is not technically correct, but it will work for now
+}
+
 /// State represents the state of the chain as of a particular block.
 #[derive(PartialEq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct State {
     pub index: ChainIndex,
+    #[serde(with = "crate::types::utils::timestamp_array")]
     pub prev_timestamps: [OffsetDateTime; 11],
     pub depth: BlockID,
     pub child_target: BlockID,
     pub siafund_pool: Currency,
 
     // Oak hardfork state
+    #[serde(with = "crate::types::utils::nano_second_duration")]
     pub oak_time: Duration,
     pub oak_target: BlockID,
 
@@ -265,14 +275,18 @@ pub struct State {
     pub foundation_primary_address: Address,
     pub foundation_failsafe_address: Address,
     // v2 hardfork state
-    // TODO: Add v2 hardfork state
+    pub total_work: Work,
+    pub difficulty: Work,
+    pub oak_work: Work,
+    pub elements: Elements,
+    pub attestations: u64,
 }
 
 impl SiaEncodable for State {
     fn encode<W: std::io::Write>(&self, w: &mut W) -> crate::encoding::Result<()> {
         self.index.encode(w)?;
-        let timestamps_count = if self.index.height < 11 {
-            self.index.height as usize
+        let timestamps_count = if self.index.height + 1 < 11 {
+            (self.index.height + 1) as usize
         } else {
             11
         };
@@ -287,6 +301,11 @@ impl SiaEncodable for State {
         self.oak_target.encode(w)?;
         self.foundation_primary_address.encode(w)?;
         self.foundation_failsafe_address.encode(w)?;
+        self.total_work.encode(w)?;
+        self.difficulty.encode(w)?;
+        self.oak_work.encode(w)?;
+        self.elements.encode(w)?;
+        self.attestations.encode(w)?;
         Ok(())
     }
 }
@@ -316,6 +335,14 @@ impl SiaDecodable for State {
             oak_target: BlockID::decode(r)?,
             foundation_primary_address: Address::decode(r)?,
             foundation_failsafe_address: Address::decode(r)?,
+            total_work: Work::zero(),
+            difficulty: Work::zero(),
+            oak_work: Work::zero(),
+            elements: Elements {
+                num_leaves: 0,
+                trees: vec![],
+            },
+            attestations: 0,
         })
     }
 }
@@ -416,6 +443,9 @@ impl ChainState {
 
 #[cfg(test)]
 mod tests {
+    
+    
+
     use super::*;
     use serde_json;
 
@@ -444,4 +474,53 @@ mod tests {
             assert_eq!(network, deserialized, "{} failed", network.name);
         }
     }
+
+    /*#[test]
+    fn test_serialize_state() {
+        let s = State {
+            index: ChainIndex {
+                height: 0,
+                id: block_id!("0000000000000000000000000000000000000000000000000000000000000000"),
+            },
+            prev_timestamps: [OffsetDateTime::UNIX_EPOCH; 11],
+            depth: block_id!("0000000000000000000000000000000000000000000000000000000000000000"),
+            child_target: block_id!(
+                "0000000000000000000000000000000000000000000000000000000000000000"
+            ),
+            siafund_pool: ZERO_SC,
+            oak_time: Duration::ZERO,
+            oak_target: block_id!(
+                "0000000000000000000000000000000000000000000000000000000000000000"
+            ),
+            foundation_primary_address: address!(
+                "000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69"
+            ),
+            foundation_failsafe_address: address!(
+                "000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69"
+            ),
+            total_work: Work::from(123456),
+            difficulty: Work::zero(),
+            oak_work: Work::zero(),
+            elements: Elements {
+                num_leaves: 0,
+                trees: vec![],
+            },
+            attestations: 0,
+        };
+
+        const JSON_STR: &'static str = "{\"index\":{\"height\":0,\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\"},\"prevTimestamps\":[\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\"],\"depth\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"childTarget\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"siafundPool\":\"0\",\"oakTime\":0,\"oakTarget\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"foundationPrimaryAddress\":\"000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69\",\"foundationFailsafeAddress\":\"000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69\",\"totalWork\":\"123456\",\"difficulty\":\"0\",\"oakWork\":\"0\",\"elements\":{\"numLeaves\":0,\"trees\":[]},\"attestations\":0}";
+
+        let serialized = serde_json::to_string(&s).unwrap();
+        assert_eq!(JSON_STR, serialized);
+        let deserialized: State = serde_json::from_str(JSON_STR).unwrap();
+        assert_eq!(s, deserialized);
+
+        const BINARY_STR: &'static str = "0000000000000000000000000000000000000000000000000000000000000000000000000000000000096e88f1ffffff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001e2400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+        let mut serialized = Vec::new();
+        s.encode(&mut serialized).unwrap();
+        assert_eq!(BINARY_STR, hex::encode(serialized.clone()));
+        let deserialized = State::decode(&mut &serialized[..]).unwrap();
+        assert_eq!(s, deserialized);
+    }*/
 }

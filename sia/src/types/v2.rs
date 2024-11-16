@@ -649,9 +649,10 @@ impl SiaDecodable for Transaction {
 mod tests {
     use super::*;
     use crate::consensus::{
-        HardforkASIC, HardforkDevAddr, HardforkFoundation, HardforkOak, HardforkStorageProof,
-        HardforkTax, HardforkV2, Network, State,
+        Elements, HardforkASIC, HardforkDevAddr, HardforkFoundation, HardforkOak,
+        HardforkStorageProof, HardforkTax, HardforkV2, Network, State,
     };
+    use crate::types::Work;
     use crate::{address, hash_256, public_key, siacoin_id};
     use core::fmt::Debug;
     use serde::de::DeserializeOwned;
@@ -968,6 +969,14 @@ mod tests {
                 oak_target: BlockID::default(),
                 foundation_primary_address: Address::new([0u8; 32]),
                 foundation_failsafe_address: Address::new([0u8; 32]),
+                total_work: Work::zero(),
+                difficulty: Work::zero(),
+                oak_work: Work::zero(),
+                elements: Elements {
+                    num_leaves: 0,
+                    trees: vec![],
+                },
+                attestations: 0,
             },
             network: Network {
                 name: "test".to_string(),
