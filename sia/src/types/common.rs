@@ -10,7 +10,7 @@ use crate::encoding::{
 };
 use crate::macros::impl_hash_id;
 use crate::types::currency::Currency;
-use crate::types::{v1, v2};
+use crate::types::v1;
 
 impl_hash_id!(Hash256);
 impl_hash_id!(BlockID);
@@ -36,16 +36,13 @@ impl fmt::Display for ChainIndex {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Block {
-    #[serde(rename="parentID")]
+    #[serde(rename = "parentID")]
     pub parent_id: BlockID,
     pub nonce: u64,
     #[serde(with = "time::serde::rfc3339")]
     pub timestamp: OffsetDateTime,
     pub miner_payouts: Vec<SiacoinOutput>,
     pub transactions: Vec<v1::Transaction>,
-
-    #[serde(skip_serializing_if="Option::is_none")]
-    pub v2: Option<v2::BlockData>,
 }
 
 impl V1SiaEncodable for Block {
@@ -66,23 +63,7 @@ impl V1SiaDecodable for Block {
             timestamp: OffsetDateTime::decode(r)?,
             miner_payouts: Vec::<SiacoinOutput>::decode_v1(r)?,
             transactions: Vec::<v1::Transaction>::decode_v1(r)?,
-            v2: None,
         })
-    }
-}
-
-impl SiaEncodable for Block {
-    fn encode<W: std::io::Write>(&self, w: &mut W) -> encoding::Result<()> {
-        self.encode_v1(w)?;
-        self.v2.encode(w)
-    }
-}
-
-impl SiaDecodable for Block {
-    fn decode<R: std::io::Read>(r: &mut R) -> encoding::Result<Self> {
-        let mut b = Block::decode_v1(r)?;
-        b.v2 = Option::<v2::BlockData>::decode(r)?;
-        Ok(b)
     }
 }
 
@@ -330,7 +311,7 @@ mod tests {
 
     #[test]
     fn test_serialize_block() {
-        let mut b = Block{
+        let b = Block{
             parent_id: block_id!("8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c"),
             nonce: 1236112,
             timestamp: OffsetDateTime::UNIX_EPOCH,
@@ -364,7 +345,6 @@ mod tests {
                     signatures: Vec::new(),
                 },
             ],
-            v2: None,
         };
 
         const BINARY_STR: &'static str = "8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c90dc120000000000000000000000000001000000000000000700000000000000cb563bafbb55c90000000000000000000000000000000000000000000000000000000000000000010000000000000001000000000000008fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c000000000000000001000000000000006564323535313900000000000000000020000000000000008fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c010000000000000001000000000000000700000000000000f11318f74d10cf000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";

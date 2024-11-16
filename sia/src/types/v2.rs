@@ -2,6 +2,7 @@ use std::io;
 
 use crate::consensus::ChainState;
 use crate::encoding::{self, SiaDecodable, SiaDecode, SiaEncodable, SiaEncode};
+use crate::types::ZERO_SC;
 use blake2b_simd::Params;
 use serde::de::{Error, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
@@ -450,27 +451,32 @@ impl<'de> Deserialize<'de> for FileContractResolution {
 }
 
 /// A Transaction effects a change of blockchain state.
-#[derive(Debug, PartialEq, Serialize, Deserialize, SiaEncode, SiaDecode)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Transaction {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub siacoin_inputs: Vec<SiacoinInput>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub siacoin_outputs: Vec<SiacoinOutput>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub siafund_inputs: Vec<SiafundInput>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub siafund_outputs: Vec<SiafundOutput>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub file_contracts: Vec<FileContract>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub file_contract_revisions: Vec<FileContractRevision>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub file_contract_resolutions: Vec<FileContractResolution>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attestations: Vec<Attestation>,
-    #[serde(default, with = "crate::types::utils::base64")]
+    #[serde(
+        default,
+        with = "crate::types::utils::base64",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub arbitrary_data: Vec<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub new_foundation_address: Option<Address>,
     pub miner_fee: Currency,
 }
@@ -515,13 +521,128 @@ impl Transaction {
     }
 }
 
-/// BlockData contains the additional V2 data included in a block.
-#[derive(Debug, PartialEq, SiaEncode, SiaDecode, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BlockData {
-    pub height: u64,
-    pub commitment: Hash256,
-    pub transactions: Vec<Transaction>,
+const TXN_VERSION: u8 = 2;
+
+impl SiaEncodable for Transaction {
+    fn encode<W: io::Write>(&self, w: &mut W) -> encoding::Result<()> {
+        TXN_VERSION.encode(w)?;
+
+        let fields = [
+            !self.siacoin_inputs.is_empty(),
+            !self.siacoin_outputs.is_empty(),
+            !self.siafund_inputs.is_empty(),
+            !self.siafund_outputs.is_empty(),
+            !self.file_contracts.is_empty(),
+            !self.file_contract_revisions.is_empty(),
+            !self.file_contract_resolutions.is_empty(),
+            !self.attestations.is_empty(),
+            !self.arbitrary_data.is_empty(),
+            self.new_foundation_address.is_some(),
+            self.miner_fee != ZERO_SC,
+        ]
+        .iter()
+        .enumerate()
+        .filter(|(_, &condition)| condition)
+        .map(|(i, _)| 1 << i)
+        .sum::<u64>();
+        fields.encode(w)?;
+
+        if !self.siacoin_inputs.is_empty() {
+            self.siacoin_inputs.encode(w)?;
+        }
+        if !self.siacoin_outputs.is_empty() {
+            self.siacoin_outputs.encode(w)?;
+        }
+        if !self.siafund_inputs.is_empty() {
+            self.siafund_inputs.encode(w)?;
+        }
+        if !self.siafund_outputs.is_empty() {
+            self.siafund_outputs.encode(w)?;
+        }
+        if !self.file_contracts.is_empty() {
+            self.file_contracts.encode(w)?;
+        }
+        if !self.file_contract_revisions.is_empty() {
+            self.file_contract_revisions.encode(w)?;
+        }
+        if !self.file_contract_resolutions.is_empty() {
+            self.file_contract_resolutions.encode(w)?;
+        }
+        if !self.attestations.is_empty() {
+            self.attestations.encode(w)?;
+        }
+        if !self.arbitrary_data.is_empty() {
+            self.arbitrary_data.encode(w)?;
+        }
+        if let Some(addr) = &self.new_foundation_address {
+            addr.encode(w)?;
+        }
+        if self.miner_fee != ZERO_SC {
+            self.miner_fee.encode(w)?;
+        }
+        Ok(())
+    }
+}
+
+impl SiaDecodable for Transaction {
+    fn decode<R: io::Read>(r: &mut R) -> encoding::Result<Self> {
+        let version = u8::decode(r)?;
+        if version != TXN_VERSION {
+            return Err(encoding::Error::Custom(
+                "unsupported transaction version".to_string(),
+            ));
+        }
+
+        let fields = u64::decode(r)?;
+        let mut txn = Transaction {
+            siacoin_inputs: Vec::new(),
+            siacoin_outputs: Vec::new(),
+            siafund_inputs: Vec::new(),
+            siafund_outputs: Vec::new(),
+            file_contracts: Vec::new(),
+            file_contract_revisions: Vec::new(),
+            file_contract_resolutions: Vec::new(),
+            attestations: Vec::new(),
+            arbitrary_data: Vec::new(),
+            new_foundation_address: None,
+            miner_fee: ZERO_SC,
+        };
+        if fields & 1 != 0 {
+            txn.siacoin_inputs = Vec::decode(r)?;
+        }
+        if fields & 2 != 0 {
+            txn.siacoin_outputs = Vec::decode(r)?;
+        }
+        if fields & 4 != 0 {
+            txn.siafund_inputs = Vec::decode(r)?;
+        }
+        if fields & 8 != 0 {
+            txn.siafund_outputs = Vec::decode(r)?;
+        }
+        if fields & 16 != 0 {
+            txn.file_contracts = Vec::decode(r)?;
+        }
+        if fields & 32 != 0 {
+            txn.file_contract_revisions = Vec::decode(r)?;
+        }
+        if fields & 64 != 0 {
+            txn.file_contract_resolutions = Vec::decode(r)?;
+        }
+        if fields & 128 != 0 {
+            txn.attestations = Vec::decode(r)?;
+        }
+        if fields & 256 != 0 {
+            txn.arbitrary_data = Vec::decode(r)?;
+        }
+        if fields & 512 != 0 {
+            txn.new_foundation_address = Some(Address::decode(r)?);
+        }
+        if fields & 1024 != 0 {
+            txn.miner_fee = Currency::decode(r)?;
+        }
+
+        Ok(txn)
+    }
 }
 
 #[cfg(test)]
@@ -531,7 +652,7 @@ mod tests {
         HardforkASIC, HardforkDevAddr, HardforkFoundation, HardforkOak, HardforkStorageProof,
         HardforkTax, HardforkV2, Network, State,
     };
-    use crate::hash_256;
+    use crate::{address, hash_256, public_key, siacoin_id};
     use core::fmt::Debug;
     use serde::de::DeserializeOwned;
     use serde::Serialize;
@@ -1208,5 +1329,64 @@ mod tests {
             hex::encode(sig_hash),
             "aefb1120a3f69fc8293caeb0bd36b4637d6fdf12f2f60494a2875358552f1422"
         );
+    }
+
+    #[test]
+    fn test_transaction_serialization() {
+        let txn = Transaction {
+            siacoin_inputs: vec![],
+            siacoin_outputs: vec![],
+            siafund_inputs: vec![],
+            siafund_outputs: vec![],
+            file_contracts: vec![],
+            file_contract_revisions: vec![],
+            file_contract_resolutions: vec![],
+            attestations: vec![],
+            new_foundation_address: None,
+            arbitrary_data: vec![],
+            miner_fee: Currency::new(0),
+        };
+        test_serialize_json(&txn, "{\"minerFee\":\"0\"}");
+        test_serialize(&txn, "020000000000000000");
+
+        let txn = Transaction {
+            siacoin_inputs: vec![SiacoinInput {
+                parent: SiacoinElement{
+                    id: siacoin_id!("aefb1120a3f69fc8293caeb0bd36b4637d6fdf12f2f60494a2875358552f1422"),
+                    state_element: StateElement{
+                        leaf_index: 12312413,
+                        merkle_proof: vec![hash_256!("aefb1120a3f69fc8293caeb0bd36b4637d6fdf12f2f60494a2875358552f1422")]
+                    },
+                    siacoin_output: SiacoinOutput{
+                        value: Currency::new(100),
+                        address: address!("8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0")
+                    },
+                    maturity_height: 0,
+                },
+                satisfied_policy: SatisfiedPolicy {
+                    policy: SpendPolicy::public_key(public_key!("ed25519:aefb1120a3f69fc8293caeb0bd36b4637d6fdf12f2f60494a2875358552f1422")),
+                    signatures: vec![
+                        Signature::parse_string("aefb1120a3f69fc8293caeb0bd36b4637d6fdf12f2f60494a2875358552f1422aefb1120a3f69fc8293caeb0bd36b4637d6fdf12f2f60494a2875358552f1422").unwrap()
+                    ],
+                    preimages: vec![],
+                },
+            },
+            ],
+            siacoin_outputs: vec![SiacoinOutput {
+                value: Currency::new(100),
+                address: address!("8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0")
+            }],
+            siafund_inputs: vec![],
+            siafund_outputs: vec![],
+            file_contracts: vec![],
+            file_contract_revisions: vec![],
+            file_contract_resolutions: vec![],
+            attestations: vec![],
+            new_foundation_address: None,
+            arbitrary_data: vec![],
+            miner_fee: Currency::new(123581),
+        };
+        test_serialize(&txn, "02030400000000000001000000000000005ddfbb00000000000100000000000000aefb1120a3f69fc8293caeb0bd36b4637d6fdf12f2f60494a2875358552f1422aefb1120a3f69fc8293caeb0bd36b4637d6fdf12f2f60494a2875358552f1422640000000000000000000000000000008fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8c00000000000000000103aefb1120a3f69fc8293caeb0bd36b4637d6fdf12f2f60494a2875358552f14220100000000000000aefb1120a3f69fc8293caeb0bd36b4637d6fdf12f2f60494a2875358552f1422aefb1120a3f69fc8293caeb0bd36b4637d6fdf12f2f60494a2875358552f142200000000000000000100000000000000640000000000000000000000000000008fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cbde20100000000000000000000000000");
+        test_serialize_json(&txn, "{\"siacoinInputs\":[{\"parent\":{\"stateElement\":{\"leafIndex\":12312413,\"merkleProof\":[\"aefb1120a3f69fc8293caeb0bd36b4637d6fdf12f2f60494a2875358552f1422\"]},\"id\":\"aefb1120a3f69fc8293caeb0bd36b4637d6fdf12f2f60494a2875358552f1422\",\"siacoinOutput\":{\"value\":\"100\",\"address\":\"8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0\"},\"maturityHeight\":0},\"satisfiedPolicy\":{\"policy\":{\"type\":\"pk\",\"policy\":\"ed25519:aefb1120a3f69fc8293caeb0bd36b4637d6fdf12f2f60494a2875358552f1422\"},\"signatures\":[\"aefb1120a3f69fc8293caeb0bd36b4637d6fdf12f2f60494a2875358552f1422aefb1120a3f69fc8293caeb0bd36b4637d6fdf12f2f60494a2875358552f1422\"]}}],\"siacoinOutputs\":[{\"value\":\"100\",\"address\":\"8fb49ccf17dfdcc9526dec6ee8a5cca20ff8247302053d3777410b9b0494ba8cdf32abee86f0\"}],\"minerFee\":\"123581\"}");
     }
 }

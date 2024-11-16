@@ -11,6 +11,8 @@ use crate::encoding::{self, SiaDecodable, SiaEncodable, V1SiaDecodable, V1SiaEnc
 const SIACOIN_PRECISION_I32: i32 = 24;
 const SIACOIN_PRECISION_U32: u32 = 24;
 
+pub const ZERO_SC: Currency = Currency(0);
+
 // Currency represents a quantity of Siacoins as Hastings.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Currency(u128);
