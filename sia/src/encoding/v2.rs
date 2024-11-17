@@ -1,5 +1,6 @@
 use std::io::{self, Read, Write};
 use thiserror::Error;
+use time::{Duration, OffsetDateTime};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -54,6 +55,32 @@ impl SiaDecodable for bool {
             1 => Ok(true),
             _ => Err(Error::InvalidValue),
         }
+    }
+}
+
+impl SiaEncodable for OffsetDateTime {
+    fn encode<W: Write>(&self, w: &mut W) -> Result<()> {
+        self.unix_timestamp().encode(w)
+    }
+}
+
+impl SiaDecodable for OffsetDateTime {
+    fn decode<R: Read>(r: &mut R) -> Result<Self> {
+        let timestamp = i64::decode(r)?;
+        Ok(OffsetDateTime::from_unix_timestamp(timestamp).unwrap())
+    }
+}
+
+impl SiaEncodable for Duration {
+    fn encode<W: Write>(&self, w: &mut W) -> Result<()> {
+        self.whole_seconds().encode(w)
+    }
+}
+
+impl SiaDecodable for Duration {
+    fn decode<R: Read>(r: &mut R) -> Result<Self> {
+        let secs = u64::decode(r)?;
+        Ok(Duration::new(secs as i64, 0))
     }
 }
 
