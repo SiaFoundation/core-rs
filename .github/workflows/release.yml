@@ -1,13 +1,13 @@
 name: Release
 
 on:
-  workflow_dispatch:
-
-permissions:
-  contents: write
+  pull_request:
+    types: [closed]
+    branches: [main]
 
 jobs:
   release:
+    if: github.head_ref == 'release' && github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
