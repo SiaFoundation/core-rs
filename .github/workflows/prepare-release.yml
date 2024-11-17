@@ -22,8 +22,8 @@ jobs:
         run: |
           rustup update stable
           cargo install knope
-          git config --global user.name GitHub Actions
-          git config user.email github-actions@github.com
+          git config --global user.name ${{ github.actor }}
+          git config user.email ${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com
       - run: knope prepare-release --verbose
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
