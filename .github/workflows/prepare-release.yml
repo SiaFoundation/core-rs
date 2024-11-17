@@ -22,8 +22,14 @@ jobs:
         run: |
           rustup update stable
           cargo install knope
-          git config --global user.name ${{ github.actor }}
-          git config user.email ${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com
-      - run: knope prepare-release --verbose
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare Release
+        run: knope prepare-release --verbose
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          delete-branch: true
+          commit-message: "chore: prepare releases"
+          title: Release Versions
+          body: |
+            This PR was automatically created to prepare the release versions. Close the PR when you are ready to release. See the changelog for more details.
+          branch: release
