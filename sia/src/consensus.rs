@@ -1,6 +1,6 @@
 use crate::address;
-use serde::{Deserialize, Serialize};
-use sia_derive::{SiaDecode, SiaEncode};
+use serde::ser::SerializeStruct;
+use serde::{Deserialize, Serialize, Serializer};
 use time::{Duration, OffsetDateTime};
 
 use crate::encoding::{self, SiaDecodable, SiaEncodable};
@@ -248,11 +248,100 @@ impl Network {
     }
 }
 
-#[derive(PartialEq, Debug, Serialize, Deserialize, SiaEncode, SiaDecode)]
-#[serde(rename_all = "camelCase")]
-pub struct Elements {
+fn has_tree_at_height(num_leaves: &u64, height: usize) -> bool {
+    num_leaves & (1 << height) != 0
+}
+
+#[derive(PartialEq, Debug)]
+pub struct ElementAccumulator {
     pub num_leaves: u64,
-    pub trees: Vec<Hash256>, // note: this is not technically correct, but it will work for now
+    pub trees: [Hash256; 64],
+}
+
+impl Default for ElementAccumulator {
+    fn default() -> Self {
+        ElementAccumulator {
+            num_leaves: 0,
+            trees: [Hash256::default(); 64],
+        }
+    }
+}
+
+impl SiaEncodable for ElementAccumulator {
+    fn encode<W: std::io::Write>(&self, w: &mut W) -> encoding::Result<()> {
+        self.num_leaves.encode(w)?;
+        for (i, root) in self.trees.iter().enumerate() {
+            if has_tree_at_height(&self.num_leaves, i) {
+                root.encode(w)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl SiaDecodable for ElementAccumulator {
+    fn decode<R: std::io::Read>(r: &mut R) -> encoding::Result<Self> {
+        let num_leaves = u64::decode(r)?;
+        let mut trees = [Hash256::default(); 64];
+        for i in 0..64 {
+            if has_tree_at_height(&num_leaves, i) {
+                trees[i] = Hash256::decode(r)?;
+            }
+        }
+        Ok(ElementAccumulator { num_leaves, trees })
+    }
+}
+
+impl Serialize for ElementAccumulator {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut state = serializer.serialize_struct("ElementAccumulator", 2)?;
+        state.serialize_field("numLeaves", &self.num_leaves)?;
+        let trees: Vec<Hash256> = self
+            .trees
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| has_tree_at_height(&self.num_leaves, *i))
+            .map(|(_, root)| *root)
+            .collect();
+        state.serialize_field("trees", &trees)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for ElementAccumulator {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct InterElementAccumulator {
+            num_leaves: u64,
+            trees: Vec<Hash256>,
+        }
+
+        let inter = InterElementAccumulator::deserialize(deserializer)?;
+
+        if inter.trees.len() != inter.num_leaves.count_ones() as usize {
+            return Err(serde::de::Error::custom("invalid number of trees"));
+        }
+
+        let mut ea = ElementAccumulator {
+            num_leaves: inter.num_leaves,
+            trees: [Hash256::default(); 64],
+        };
+        let mut trees_iter = inter.trees.into_iter();
+        for i in 0..64 {
+            if has_tree_at_height(&ea.num_leaves, i) {
+                if let Some(root) = trees_iter.next() {
+                    ea.trees[i] = root
+                } else {
+                    return Err(serde::de::Error::custom("missing tree"));
+                }
+            }
+        }
+        Ok(ea)
+    }
 }
 
 /// State represents the state of the chain as of a particular block.
@@ -278,15 +367,15 @@ pub struct State {
     pub total_work: Work,
     pub difficulty: Work,
     pub oak_work: Work,
-    pub elements: Elements,
+    pub elements: ElementAccumulator,
     pub attestations: u64,
 }
 
 impl SiaEncodable for State {
     fn encode<W: std::io::Write>(&self, w: &mut W) -> crate::encoding::Result<()> {
         self.index.encode(w)?;
-        let timestamps_count = if self.index.height + 1 < 11 {
-            (self.index.height + 1) as usize
+        let timestamps_count = if self.index.child_height() < 11 {
+            self.index.child_height() as usize
         } else {
             11
         };
@@ -313,8 +402,8 @@ impl SiaEncodable for State {
 impl SiaDecodable for State {
     fn decode<R: std::io::Read>(r: &mut R) -> crate::encoding::Result<Self> {
         let index = ChainIndex::decode(r)?;
-        let timestamps_count = if index.height < 11 {
-            index.height as usize
+        let timestamps_count = if index.child_height() < 11 {
+            index.child_height() as usize
         } else {
             11
         };
@@ -335,14 +424,11 @@ impl SiaDecodable for State {
             oak_target: BlockID::decode(r)?,
             foundation_primary_address: Address::decode(r)?,
             foundation_failsafe_address: Address::decode(r)?,
-            total_work: Work::zero(),
-            difficulty: Work::zero(),
-            oak_work: Work::zero(),
-            elements: Elements {
-                num_leaves: 0,
-                trees: vec![],
-            },
-            attestations: 0,
+            total_work: Work::decode(r)?,
+            difficulty: Work::decode(r)?,
+            oak_work: Work::decode(r)?,
+            elements: ElementAccumulator::decode(r)?,
+            attestations: u64::decode(r)?,
         })
     }
 }
@@ -444,8 +530,11 @@ impl ChainState {
 #[cfg(test)]
 mod tests {
 
+    use crate::{block_id, hash_256};
+
     use super::*;
     use serde_json;
+    use time::UtcOffset;
 
     #[test]
     fn test_serialize_network() {
@@ -473,7 +562,7 @@ mod tests {
         }
     }
 
-    /*#[test]
+    #[test]
     fn test_serialize_state() {
         let s = State {
             index: ChainIndex {
@@ -485,7 +574,7 @@ mod tests {
             child_target: block_id!(
                 "0000000000000000000000000000000000000000000000000000000000000000"
             ),
-            siafund_pool: ZERO_SC,
+            siafund_pool: Currency::zero(),
             oak_time: Duration::ZERO,
             oak_target: block_id!(
                 "0000000000000000000000000000000000000000000000000000000000000000"
@@ -496,29 +585,216 @@ mod tests {
             foundation_failsafe_address: address!(
                 "000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69"
             ),
-            total_work: Work::from(123456),
+            total_work: Work::zero(),
             difficulty: Work::zero(),
             oak_work: Work::zero(),
-            elements: Elements {
+            elements: ElementAccumulator {
                 num_leaves: 0,
-                trees: vec![],
+                trees: [Hash256::default(); 64],
             },
             attestations: 0,
         };
 
-        const JSON_STR: &'static str = "{\"index\":{\"height\":0,\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\"},\"prevTimestamps\":[\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\"],\"depth\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"childTarget\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"siafundPool\":\"0\",\"oakTime\":0,\"oakTarget\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"foundationPrimaryAddress\":\"000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69\",\"foundationFailsafeAddress\":\"000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69\",\"totalWork\":\"123456\",\"difficulty\":\"0\",\"oakWork\":\"0\",\"elements\":{\"numLeaves\":0,\"trees\":[]},\"attestations\":0}";
+        const EMPTY_JSON_STR: &'static str = "{\"index\":{\"height\":0,\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\"},\"prevTimestamps\":[\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\",\"1970-01-01T00:00:00Z\"],\"depth\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"childTarget\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"siafundPool\":\"0\",\"oakTime\":0,\"oakTarget\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"foundationPrimaryAddress\":\"000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69\",\"foundationFailsafeAddress\":\"000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69\",\"totalWork\":\"0\",\"difficulty\":\"0\",\"oakWork\":\"0\",\"elements\":{\"numLeaves\":0,\"trees\":[]},\"attestations\":0}";
+
+        let serialized = serde_json::to_string(&s).unwrap();
+        assert_eq!(EMPTY_JSON_STR, serialized);
+        let deserialized: State = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(s, deserialized);
+
+        const EMPTY_BINARY_STR: &'static str = "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+        let mut serialized = Vec::new();
+        s.encode(&mut serialized).unwrap();
+        assert_eq!(EMPTY_BINARY_STR, hex::encode(serialized.clone()));
+        let deserialized = State::decode(&mut &serialized[..]).unwrap();
+        assert_eq!(s, deserialized);
+
+        let s = State {
+            index: ChainIndex {
+                height: 16173070238323073115,
+                id: block_id!("54b6800181215b654a2b64e8a0f39da6d5ad20f4e6eda87d50d36e93efd9cdb9"),
+            },
+            prev_timestamps: [
+                OffsetDateTime::parse(
+                    "2167-03-18T17:08:40-07:00",
+                    &time::format_description::well_known::Rfc3339,
+                )
+                .unwrap()
+                .to_offset(UtcOffset::UTC),
+                OffsetDateTime::parse(
+                    "1971-03-30T07:40:44-08:00",
+                    &time::format_description::well_known::Rfc3339,
+                )
+                .unwrap()
+                .to_offset(UtcOffset::UTC),
+                OffsetDateTime::parse(
+                    "2226-11-12T19:51:30-08:00",
+                    &time::format_description::well_known::Rfc3339,
+                )
+                .unwrap()
+                .to_offset(UtcOffset::UTC),
+                OffsetDateTime::parse(
+                    "2013-09-10T15:07:20-07:00",
+                    &time::format_description::well_known::Rfc3339,
+                )
+                .unwrap()
+                .to_offset(UtcOffset::UTC),
+                OffsetDateTime::parse(
+                    "2230-05-18T20:13:07-07:00",
+                    &time::format_description::well_known::Rfc3339,
+                )
+                .unwrap()
+                .to_offset(UtcOffset::UTC),
+                OffsetDateTime::parse(
+                    "1983-10-27T20:37:21-07:00",
+                    &time::format_description::well_known::Rfc3339,
+                )
+                .unwrap()
+                .to_offset(UtcOffset::UTC),
+                OffsetDateTime::parse(
+                    "2068-03-31T10:25:10-07:00",
+                    &time::format_description::well_known::Rfc3339,
+                )
+                .unwrap()
+                .to_offset(UtcOffset::UTC),
+                OffsetDateTime::parse(
+                    "2159-06-29T18:46:49-07:00",
+                    &time::format_description::well_known::Rfc3339,
+                )
+                .unwrap()
+                .to_offset(UtcOffset::UTC),
+                OffsetDateTime::parse(
+                    "2089-05-02T23:45:50-07:00",
+                    &time::format_description::well_known::Rfc3339,
+                )
+                .unwrap()
+                .to_offset(UtcOffset::UTC),
+                OffsetDateTime::parse(
+                    "2073-02-27T00:01:11-08:00",
+                    &time::format_description::well_known::Rfc3339,
+                )
+                .unwrap()
+                .to_offset(UtcOffset::UTC),
+                OffsetDateTime::parse(
+                    "2005-07-10T11:50:37-07:00",
+                    &time::format_description::well_known::Rfc3339,
+                )
+                .unwrap()
+                .to_offset(UtcOffset::UTC),
+            ],
+            depth: block_id!("fb66f6dd0517bd80a57c6fc1dd186eeb25a5f7dc550adc94a996731734f4a478"),
+            child_target: block_id!(
+                "188d65bc61f7398757be167c70139bc79e2f387551bd0338b81f3938850033c2"
+            ),
+            siafund_pool: Currency::new(184937863921143879963732603265618430015),
+            oak_time: Duration::nanoseconds(5097318764767379519),
+            oak_target: block_id!(
+                "5e7e960e017d5772f3341bd8d80fc797de245c760a3f9e84f4da66f9e0ee95aa"
+            ),
+            foundation_primary_address: address!(
+                "95ae9eb00188ade3367e57e5bdc522a16e95a8d28e1b940d2d128273aa7a833001a060dec431"
+            ),
+            foundation_failsafe_address: address!(
+                "cfb49736296ae52965fd7d66d55720eeadfc2be586db65699050bce175c56056d3fbc1803e15"
+            ),
+            total_work: Work::from_dec_str(
+                "74729819229046869798018345563024899883189146032533830356652983039509219541660",
+            )
+            .unwrap(),
+            difficulty: Work::from_dec_str(
+                "65194889020289389878379369533805235500859175566680960159551424936807420310662",
+            )
+            .unwrap(),
+            oak_work: Work::from_dec_str(
+                "57256974569838769713335634640292932580615837804690422146878608831130432685755",
+            )
+            .unwrap(),
+            elements: ElementAccumulator {
+                num_leaves: 4899977171010125798,
+                trees: [
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("78a9fabda865dafcaf474d48bdb1272595513cf92290917392ff58ca8bea591a"),
+                    hash_256!("e6a5ea278d90592e0518fbf2e83f41507486fe57e8e4ffbe152f13250df696bf"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("2488cae3f7046f8b04aec217a09358db22d8ae36f883d1ccae9382edca79c54e"),
+                    hash_256!("e498f1adbe88c58bc9dabf487437b8d191a78fbb3d8cfe19a4c1759ae232b4f4"),
+                    hash_256!("96130e35228422970057745ef4b92d285434c25187c44110922554d0ae040678"),
+                    hash_256!("44f29b39d6e4f509d5d41834db4fd6a831ccca33bb46185a5ad01f2789581337"),
+                    hash_256!("75f0b42f9d291c4ff4e57f403893e0ca18fdc64f0723e0f29b6aeed834db1ac2"),
+                    hash_256!("4ce129d69c69971497c556d9eeec0de8c1dd9cc4b0750be9fffd9ec3226ce7a3"),
+                    hash_256!("f3321bf48aed89100db44b3080f3f350d10b6de213527b19ad57bdd1cd47576a"),
+                    hash_256!("724c8bf4c8459625190ae18b2fc1d9353d2d3b34c80d4d4fbcd48258c9a11c97"),
+                    hash_256!("062b2371de9dfad15931a1e72c46afe492ad697447680ea43300ed516bcc2742"),
+                    hash_256!("b23ca0a83b0367755e2c53c1f7ed9e6d372c220ae0f344082cf5d52c40287893"),
+                    hash_256!("9b1b446dd599fd5dab08e83738b92651d8aaa7be072db313d237c68ce1094ea1"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("a03c962c184055ccbf7a42c9a13a0d4c38125535a830832a6fff3029d6deada3"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("df5d9e1e3a220d2429f9064adecb86ecae916619c93e17d237b5972692e558fd"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("2d6315b7a91d62bd31e4738259f56f58075bd14ee2f1e2625738f506a7564176"),
+                    hash_256!("26b1d48ab8c3f0707bd5afdf4a3ef757abc9b6a0be75b8a3cecbcd5994473a72"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("f897c92aca8d6ef46a41a3a50aff0527bd09be029355d28c2360ec9cb309b1ae"),
+                    hash_256!("f80ff7cbcad8c465278a59588a3a0d000cc3130e96fb56d257229c1a50d93125"),
+                    hash_256!("7a84f42433ecd9352e2ffd8bdc8556c87ec93697cf4c4873d4ab51d2b85c44c1"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("00c03e0af90a26d0a4bb4b243f99b2d361de2412d82f357f6224eceb2f19c142"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("e0a8f77abd726e928580656d7ab49dc276603e936e04b9caf53a2a27338e3cd1"),
+                    hash_256!("e376ebd2f0c93013cf6c856fb76e7b60e64a300a9a4b839844074cac4da42b8d"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("5fcc77f29cfdb51aac9fff250e1ee7607457ce5a280e946150931d793272593a"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("ad34b2dce6a7136584c5ffea74c66e5613593dddac9eb666ff6a6aef42386968"),
+                    hash_256!("3d1afa6b931fea014211bb6b08d9508389dd0a9c47a25670ca110bcc8ce8ead1"),
+                    hash_256!("df427b938f6ef07cd67da1ab11ad8fb4e6b0a97c03325c1fc8b1c3b0c4b8f7f4"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("8c3d435fdb6ee44e26155c116a86f4dc2b54b05becb08777a63e1d1ad7c3cbc2"),
+                    hash_256!("11671f5bd2856de1b4925ee0b82f9cda6179db132c9930431d26f0ccdbb8a822"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("19dcd3ac59669e10420b36d4e588206ae123a0c8ae64b20e1ede697efc556291"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                    hash_256!("65542a8b2c1bca8d78d6517357853c1d54f6b53f04a8327f28ae2d5d022c5597"),
+                    hash_256!("0000000000000000000000000000000000000000000000000000000000000000"),
+                ],
+            },
+            attestations: 4796228701811883082,
+        };
+
+        const JSON_STR: &'static str = "{\"index\":{\"height\":16173070238323073115,\"id\":\"54b6800181215b654a2b64e8a0f39da6d5ad20f4e6eda87d50d36e93efd9cdb9\"},\"prevTimestamps\":[\"2167-03-19T00:08:40Z\",\"1971-03-30T15:40:44Z\",\"2226-11-13T03:51:30Z\",\"2013-09-10T22:07:20Z\",\"2230-05-19T03:13:07Z\",\"1983-10-28T03:37:21Z\",\"2068-03-31T17:25:10Z\",\"2159-06-30T01:46:49Z\",\"2089-05-03T06:45:50Z\",\"2073-02-27T08:01:11Z\",\"2005-07-10T18:50:37Z\"],\"depth\":\"fb66f6dd0517bd80a57c6fc1dd186eeb25a5f7dc550adc94a996731734f4a478\",\"childTarget\":\"188d65bc61f7398757be167c70139bc79e2f387551bd0338b81f3938850033c2\",\"siafundPool\":\"184937863921143879963732603265618430015\",\"oakTime\":5097318764767379519,\"oakTarget\":\"5e7e960e017d5772f3341bd8d80fc797de245c760a3f9e84f4da66f9e0ee95aa\",\"foundationPrimaryAddress\":\"95ae9eb00188ade3367e57e5bdc522a16e95a8d28e1b940d2d128273aa7a833001a060dec431\",\"foundationFailsafeAddress\":\"cfb49736296ae52965fd7d66d55720eeadfc2be586db65699050bce175c56056d3fbc1803e15\",\"totalWork\":\"74729819229046869798018345563024899883189146032533830356652983039509219541660\",\"difficulty\":\"65194889020289389878379369533805235500859175566680960159551424936807420310662\",\"oakWork\":\"57256974569838769713335634640292932580615837804690422146878608831130432685755\",\"elements\":{\"numLeaves\":4899977171010125798,\"trees\":[\"78a9fabda865dafcaf474d48bdb1272595513cf92290917392ff58ca8bea591a\",\"e6a5ea278d90592e0518fbf2e83f41507486fe57e8e4ffbe152f13250df696bf\",\"2488cae3f7046f8b04aec217a09358db22d8ae36f883d1ccae9382edca79c54e\",\"e498f1adbe88c58bc9dabf487437b8d191a78fbb3d8cfe19a4c1759ae232b4f4\",\"96130e35228422970057745ef4b92d285434c25187c44110922554d0ae040678\",\"44f29b39d6e4f509d5d41834db4fd6a831ccca33bb46185a5ad01f2789581337\",\"75f0b42f9d291c4ff4e57f403893e0ca18fdc64f0723e0f29b6aeed834db1ac2\",\"4ce129d69c69971497c556d9eeec0de8c1dd9cc4b0750be9fffd9ec3226ce7a3\",\"f3321bf48aed89100db44b3080f3f350d10b6de213527b19ad57bdd1cd47576a\",\"724c8bf4c8459625190ae18b2fc1d9353d2d3b34c80d4d4fbcd48258c9a11c97\",\"062b2371de9dfad15931a1e72c46afe492ad697447680ea43300ed516bcc2742\",\"b23ca0a83b0367755e2c53c1f7ed9e6d372c220ae0f344082cf5d52c40287893\",\"9b1b446dd599fd5dab08e83738b92651d8aaa7be072db313d237c68ce1094ea1\",\"a03c962c184055ccbf7a42c9a13a0d4c38125535a830832a6fff3029d6deada3\",\"df5d9e1e3a220d2429f9064adecb86ecae916619c93e17d237b5972692e558fd\",\"2d6315b7a91d62bd31e4738259f56f58075bd14ee2f1e2625738f506a7564176\",\"26b1d48ab8c3f0707bd5afdf4a3ef757abc9b6a0be75b8a3cecbcd5994473a72\",\"f897c92aca8d6ef46a41a3a50aff0527bd09be029355d28c2360ec9cb309b1ae\",\"f80ff7cbcad8c465278a59588a3a0d000cc3130e96fb56d257229c1a50d93125\",\"7a84f42433ecd9352e2ffd8bdc8556c87ec93697cf4c4873d4ab51d2b85c44c1\",\"00c03e0af90a26d0a4bb4b243f99b2d361de2412d82f357f6224eceb2f19c142\",\"e0a8f77abd726e928580656d7ab49dc276603e936e04b9caf53a2a27338e3cd1\",\"e376ebd2f0c93013cf6c856fb76e7b60e64a300a9a4b839844074cac4da42b8d\",\"5fcc77f29cfdb51aac9fff250e1ee7607457ce5a280e946150931d793272593a\",\"ad34b2dce6a7136584c5ffea74c66e5613593dddac9eb666ff6a6aef42386968\",\"3d1afa6b931fea014211bb6b08d9508389dd0a9c47a25670ca110bcc8ce8ead1\",\"df427b938f6ef07cd67da1ab11ad8fb4e6b0a97c03325c1fc8b1c3b0c4b8f7f4\",\"8c3d435fdb6ee44e26155c116a86f4dc2b54b05becb08777a63e1d1ad7c3cbc2\",\"11671f5bd2856de1b4925ee0b82f9cda6179db132c9930431d26f0ccdbb8a822\",\"19dcd3ac59669e10420b36d4e588206ae123a0c8ae64b20e1ede697efc556291\",\"65542a8b2c1bca8d78d6517357853c1d54f6b53f04a8327f28ae2d5d022c5597\"]},\"attestations\":4796228701811883082}";
 
         let serialized = serde_json::to_string(&s).unwrap();
         assert_eq!(JSON_STR, serialized);
-        let deserialized: State = serde_json::from_str(JSON_STR).unwrap();
+        let deserialized: State = serde_json::from_str(&serialized).unwrap();
         assert_eq!(s, deserialized);
 
-        const BINARY_STR: &'static str = "0000000000000000000000000000000000000000000000000000000000000000000000000000000000096e88f1ffffff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001e2400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+        const BINARY_STR: &'static str = "5b60b072b14972e054b6800181215b654a2b64e8a0f39da6d5ad20f4e6eda87d50d36e93efd9cdb9086ff17201000000fc13560200000000420d26e30100000018982f5200000000c378c1e901000000f146ff1900000000f6f6ccb80000000089116d64010000009eb377e000000000c79509c200000000fd6dd14200000000fb66f6dd0517bd80a57c6fc1dd186eeb25a5f7dc550adc94a996731734f4a478188d65bc61f7398757be167c70139bc79e2f387551bd0338b81f3938850033c23f48064ca312d68970452ce1abbc218b3f80e4e86850bd465e7e960e017d5772f3341bd8d80fc797de245c760a3f9e84f4da66f9e0ee95aa95ae9eb00188ade3367e57e5bdc522a16e95a8d28e1b940d2d128273aa7a8330cfb49736296ae52965fd7d66d55720eeadfc2be586db65699050bce175c56056a537942b3dcc3fb364ca2cdd33416f2ad78e92cd50081c59c5c9f67c9a64829c9022ffe17973176b934cf5ab04186591c97b2b86f290de9dace84dac6fe2b4867e964c967126699e34e7e3114292eca3140a6f0a94e76e39c047b064bfdbc6bbe6ff949d4637004478a9fabda865dafcaf474d48bdb1272595513cf92290917392ff58ca8bea591ae6a5ea278d90592e0518fbf2e83f41507486fe57e8e4ffbe152f13250df696bf2488cae3f7046f8b04aec217a09358db22d8ae36f883d1ccae9382edca79c54ee498f1adbe88c58bc9dabf487437b8d191a78fbb3d8cfe19a4c1759ae232b4f496130e35228422970057745ef4b92d285434c25187c44110922554d0ae04067844f29b39d6e4f509d5d41834db4fd6a831ccca33bb46185a5ad01f278958133775f0b42f9d291c4ff4e57f403893e0ca18fdc64f0723e0f29b6aeed834db1ac24ce129d69c69971497c556d9eeec0de8c1dd9cc4b0750be9fffd9ec3226ce7a3f3321bf48aed89100db44b3080f3f350d10b6de213527b19ad57bdd1cd47576a724c8bf4c8459625190ae18b2fc1d9353d2d3b34c80d4d4fbcd48258c9a11c97062b2371de9dfad15931a1e72c46afe492ad697447680ea43300ed516bcc2742b23ca0a83b0367755e2c53c1f7ed9e6d372c220ae0f344082cf5d52c402878939b1b446dd599fd5dab08e83738b92651d8aaa7be072db313d237c68ce1094ea1a03c962c184055ccbf7a42c9a13a0d4c38125535a830832a6fff3029d6deada3df5d9e1e3a220d2429f9064adecb86ecae916619c93e17d237b5972692e558fd2d6315b7a91d62bd31e4738259f56f58075bd14ee2f1e2625738f506a756417626b1d48ab8c3f0707bd5afdf4a3ef757abc9b6a0be75b8a3cecbcd5994473a72f897c92aca8d6ef46a41a3a50aff0527bd09be029355d28c2360ec9cb309b1aef80ff7cbcad8c465278a59588a3a0d000cc3130e96fb56d257229c1a50d931257a84f42433ecd9352e2ffd8bdc8556c87ec93697cf4c4873d4ab51d2b85c44c100c03e0af90a26d0a4bb4b243f99b2d361de2412d82f357f6224eceb2f19c142e0a8f77abd726e928580656d7ab49dc276603e936e04b9caf53a2a27338e3cd1e376ebd2f0c93013cf6c856fb76e7b60e64a300a9a4b839844074cac4da42b8d5fcc77f29cfdb51aac9fff250e1ee7607457ce5a280e946150931d793272593aad34b2dce6a7136584c5ffea74c66e5613593dddac9eb666ff6a6aef423869683d1afa6b931fea014211bb6b08d9508389dd0a9c47a25670ca110bcc8ce8ead1df427b938f6ef07cd67da1ab11ad8fb4e6b0a97c03325c1fc8b1c3b0c4b8f7f48c3d435fdb6ee44e26155c116a86f4dc2b54b05becb08777a63e1d1ad7c3cbc211671f5bd2856de1b4925ee0b82f9cda6179db132c9930431d26f0ccdbb8a82219dcd3ac59669e10420b36d4e588206ae123a0c8ae64b20e1ede697efc55629165542a8b2c1bca8d78d6517357853c1d54f6b53f04a8327f28ae2d5d022c55974abc07c197a08f42";
 
         let mut serialized = Vec::new();
         s.encode(&mut serialized).unwrap();
         assert_eq!(BINARY_STR, hex::encode(serialized.clone()));
         let deserialized = State::decode(&mut &serialized[..]).unwrap();
         assert_eq!(s, deserialized);
-    }*/
+    }
 }

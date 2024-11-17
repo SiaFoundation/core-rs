@@ -529,7 +529,7 @@ impl Transaction {
 mod tests {
     use super::*;
     use crate::consensus::{
-        Elements, HardforkASIC, HardforkDevAddr, HardforkFoundation, HardforkOak,
+        ElementAccumulator, HardforkASIC, HardforkDevAddr, HardforkFoundation, HardforkOak,
         HardforkStorageProof, HardforkTax, HardforkV2, Network, State,
     };
     use crate::seed::Seed;
@@ -1033,10 +1033,7 @@ mod tests {
                 difficulty: Work::zero(),
                 oak_work: Work::zero(),
                 attestations: 0,
-                elements: Elements {
-                    num_leaves: 0,
-                    trees: vec![],
-                },
+                elements: ElementAccumulator::default(),
             },
             network: Network {
                 name: "test".to_string(),
@@ -1512,10 +1509,7 @@ mod tests {
                 difficulty: Work::zero(),
                 oak_work: Work::zero(),
                 attestations: 0,
-                elements: Elements {
-                    num_leaves: 0,
-                    trees: vec![],
-                },
+                elements: ElementAccumulator::default(),
             },
             network: Network {
                 name: "test".to_string(),
