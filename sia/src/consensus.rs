@@ -283,9 +283,10 @@ impl SiaDecodable for ElementAccumulator {
     fn decode<R: std::io::Read>(r: &mut R) -> encoding::Result<Self> {
         let num_leaves = u64::decode(r)?;
         let mut trees = [Hash256::default(); 64];
-        for i in 0..64 {
+        for (i, root) in trees.iter_mut().enumerate() {
             if has_tree_at_height(&num_leaves, i) {
-                trees[i] = Hash256::decode(r)?;
+                let h = Hash256::decode(r)?;
+                *root = h;
             }
         }
         Ok(ElementAccumulator { num_leaves, trees })
