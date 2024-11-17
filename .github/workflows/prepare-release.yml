@@ -30,6 +30,7 @@ jobs:
           delete-branch: true
           commit-message: "chore: prepare releases"
           title: Release Versions
+          base: master
+          branch: release
           body: |
             This PR was automatically created to prepare the release versions. Close the PR when you are ready to release. See the changelog for more details.
-          branch: release

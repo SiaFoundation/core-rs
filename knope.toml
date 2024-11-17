@@ -10,10 +10,6 @@ changelog = "sia_derive/CHANGELOG.md"
 name = "prepare-release"
 
 [[workflows.steps]]
-type = "Command"
-command = "git switch -c release"
-
-[[workflows.steps]]
 type = "PrepareRelease"
 
 [[workflows]]
