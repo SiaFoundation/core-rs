@@ -25,3 +25,5 @@ jobs:
           git config --global user.name GitHub Actions
           git config user.email github-actions@github.com
       - run: knope prepare-release --verbose
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
