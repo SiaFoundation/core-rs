@@ -1,0 +1,25 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  prepare-release:
+    if: "!contains(github.event.head_commit.message, 'chore: prepare releases')" # Skip merges from releases
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Environment
+        run: |
+          rustup update stable
+          cargo install knope
+      - run: knope prepare-release --verbose
