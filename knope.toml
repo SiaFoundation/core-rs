@@ -1,0 +1,45 @@
+[packages.sia_sdk]
+versioned_files = ["sia/Cargo.toml"]
+changelog = "sia/CHANGELOG.md"
+
+[packages.sia_sdk_derive]
+versioned_files = ["sia_derive/Cargo.toml"]
+changelog = "sia_derive/CHANGELOG.md"
+
+[[workflows]]
+name = "prepare-release"
+
+[[workflows.steps]]
+type = "Command"
+command = "git switch -c release"
+
+[[workflows.steps]]
+type = "PrepareRelease"
+
+[[workflows.steps]]
+type = "Command"
+command = "git commit -m \"chore: prepare releases\""
+
+[[workflows.steps]]
+type = "Command"
+command = "git push --force --set-upstream origin release"
+
+[[workflows.steps]]
+type = "CreatePullRequest"
+base = "master"
+
+[workflows.steps.title]
+template = "chore: prepare releases"
+
+[workflows.steps.body]
+template = "This PR was created automatically. Merging it will create a new release. See changelogs for details."
+
+[[workflows]]
+name = "release"
+
+[[workflows.steps]]
+type = "Release"
+
+[github]
+owner = "SiaFoundation"
+repo = "sia-sdk-rs"

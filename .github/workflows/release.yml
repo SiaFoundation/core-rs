@@ -1,0 +1,24 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Environment
+        run: |
+          rustup update stable
+          cargo install knope
+      - name: Release
+        run: |
+          knope release
+          cargo publish -p sia_sdk_derive
+          cargo publish -p sia_sdk
