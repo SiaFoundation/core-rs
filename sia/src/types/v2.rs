@@ -2,7 +2,6 @@ use std::io;
 
 use crate::consensus::ChainState;
 use crate::encoding::{self, SiaDecodable, SiaDecode, SiaEncodable, SiaEncode};
-use crate::types::ZERO_SC;
 use blake2b_simd::Params;
 use serde::de::{Error, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
@@ -538,7 +537,7 @@ impl SiaEncodable for Transaction {
             !self.attestations.is_empty(),
             !self.arbitrary_data.is_empty(),
             self.new_foundation_address.is_some(),
-            self.miner_fee != ZERO_SC,
+            self.miner_fee != Currency::zero(),
         ]
         .iter()
         .enumerate()
@@ -577,7 +576,7 @@ impl SiaEncodable for Transaction {
         if let Some(addr) = &self.new_foundation_address {
             addr.encode(w)?;
         }
-        if self.miner_fee != ZERO_SC {
+        if self.miner_fee != Currency::zero() {
             self.miner_fee.encode(w)?;
         }
         Ok(())
@@ -605,7 +604,7 @@ impl SiaDecodable for Transaction {
             attestations: Vec::new(),
             arbitrary_data: Vec::new(),
             new_foundation_address: None,
-            miner_fee: ZERO_SC,
+            miner_fee: Currency::zero(),
         };
         if fields & 1 != 0 {
             txn.siacoin_inputs = Vec::decode(r)?;
@@ -649,7 +648,7 @@ impl SiaDecodable for Transaction {
 mod tests {
     use super::*;
     use crate::consensus::{
-        Elements, HardforkASIC, HardforkDevAddr, HardforkFoundation, HardforkOak,
+        ElementAccumulator, HardforkASIC, HardforkDevAddr, HardforkFoundation, HardforkOak,
         HardforkStorageProof, HardforkTax, HardforkV2, Network, State,
     };
     use crate::types::Work;
@@ -972,10 +971,7 @@ mod tests {
                 total_work: Work::zero(),
                 difficulty: Work::zero(),
                 oak_work: Work::zero(),
-                elements: Elements {
-                    num_leaves: 0,
-                    trees: vec![],
-                },
+                elements: ElementAccumulator::default(),
                 attestations: 0,
             },
             network: Network {

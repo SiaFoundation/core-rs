@@ -7,6 +7,12 @@ versioned_files = ["sia_derive/Cargo.toml"]
 changelog = "sia_derive/CHANGELOG.md"
 
 [[workflows]]
+name = "document-change"
+
+[[workflows.steps]]
+type = "CreateChangeFile"
+
+[[workflows]]
 name = "prepare-release"
 
 [[workflows.steps]]

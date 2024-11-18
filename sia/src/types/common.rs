@@ -26,6 +26,12 @@ pub struct ChainIndex {
     pub id: BlockID,
 }
 
+impl ChainIndex {
+    pub fn child_height(&self) -> u64 {
+        self.height + 1
+    }
+}
+
 impl fmt::Display for ChainIndex {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}:{}", self.height, hex::encode(self.id))

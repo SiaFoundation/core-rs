@@ -73,14 +73,17 @@ impl SiaDecodable for OffsetDateTime {
 
 impl SiaEncodable for Duration {
     fn encode<W: Write>(&self, w: &mut W) -> Result<()> {
-        self.whole_seconds().encode(w)
+        (self.whole_nanoseconds() as u64).encode(w)
     }
 }
 
 impl SiaDecodable for Duration {
     fn decode<R: Read>(r: &mut R) -> Result<Self> {
-        let secs = u64::decode(r)?;
-        Ok(Duration::new(secs as i64, 0))
+        let ns = u64::decode(r)?;
+        if ns > i64::MAX as u64 {
+            return Err(Error::InvalidValue);
+        }
+        Ok(Duration::nanoseconds(ns as i64))
     }
 }
 
