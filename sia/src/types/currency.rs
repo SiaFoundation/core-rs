@@ -15,9 +15,6 @@ const SIACOIN_PRECISION_U32: u32 = 24;
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Currency(u128);
 
-// TODO: To distinguish between v1 and v2 currencies we could make Currency an
-// enum.  However, then the arithmetic operations become a bit tricky. We'd need
-// to decide on what to do about mixing v1 and v2 currencies.
 impl Serialize for Currency {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&self.to_string())
@@ -26,8 +23,54 @@ impl Serialize for Currency {
 
 impl<'de> Deserialize<'de> for Currency {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let s = String::deserialize(deserializer)?;
-        Currency::parse_string(&s).map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
+        struct CurrencyVisitor;
+
+        impl serde::de::Visitor<'_> for CurrencyVisitor {
+            type Value = Currency;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a string or numeric representing a currency value")
+            }
+
+            fn visit_str<E: serde::de::Error>(self, s: &str) -> Result<Self::Value, E> {
+                Currency::parse_string(s).map_err(|e| serde::de::Error::custom(format!("{:?}", e)))
+            }
+
+            fn visit_i32<E: serde::de::Error>(self, value: i32) -> Result<Self::Value, E> {
+                if value < 0 {
+                    return Err(serde::de::Error::custom("currency value must be positive"));
+                }
+                Ok(Currency::new(value as u128))
+            }
+
+            fn visit_i64<E: serde::de::Error>(self, value: i64) -> Result<Self::Value, E> {
+                if value < 0 {
+                    return Err(serde::de::Error::custom("currency value must be positive"));
+                }
+                Ok(Currency::new(value as u128))
+            }
+
+            fn visit_i128<E: serde::de::Error>(self, value: i128) -> Result<Self::Value, E> {
+                if value < 0 {
+                    return Err(serde::de::Error::custom("currency value must be positive"));
+                }
+                Ok(Currency::new(value as u128))
+            }
+
+            fn visit_u32<E: serde::de::Error>(self, value: u32) -> Result<Self::Value, E> {
+                Ok(Currency::new(value as u128))
+            }
+
+            fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<Self::Value, E> {
+                Ok(Currency::new(value as u128))
+            }
+
+            fn visit_u128<E: serde::de::Error>(self, value: u128) -> Result<Self::Value, E> {
+                Ok(Currency::new(value))
+            }
+        }
+
+        deserializer.deserialize_any(CurrencyVisitor)
     }
 }
 
