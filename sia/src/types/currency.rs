@@ -25,7 +25,7 @@ impl<'de> Deserialize<'de> for Currency {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         struct CurrencyVisitor;
 
-        impl<'de> serde::de::Visitor<'de> for CurrencyVisitor {
+        impl serde::de::Visitor<'_> for CurrencyVisitor {
             type Value = Currency;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
