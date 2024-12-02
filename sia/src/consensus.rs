@@ -523,14 +523,13 @@ impl ChainState {
         1009
     }
 
-    pub fn max_block_weight() -> u64 {
+    pub fn max_block_weight(&self) -> u64 {
         2_000_000
     }
 }
 
 #[cfg(test)]
 mod tests {
-
     use crate::{block_id, hash_256};
 
     use super::*;
