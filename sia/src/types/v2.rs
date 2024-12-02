@@ -13,7 +13,7 @@ use crate::types::common::BlockID;
 
 use super::{
     Address, AttestationID, ChainIndex, Currency, FileContractID, Hash256, Leaf, SiacoinOutput,
-    SiacoinOutputID, SiafundOutput, SiafundOutputID, StateElement,
+    SiacoinOutputID, SiafundOutput, SiafundOutputID, StateElement, TransactionID,
 };
 
 // expose spend policies
@@ -509,6 +509,12 @@ impl Transaction {
         self.new_foundation_address.encode(w)?;
         self.miner_fee.encode(w)?;
         Ok(())
+    }
+
+    pub fn id(&self) -> TransactionID {
+        let mut state = Params::new().hash_length(32).to_state();
+        self.encode_semantics(&mut state).unwrap();
+        state.finalize().into()
     }
 
     pub fn input_sig_hash(&self, cs: &ChainState) -> Hash256 {

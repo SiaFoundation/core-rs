@@ -16,10 +16,7 @@ impl PublicKey {
 
 impl Serialize for PublicKey {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        String::serialize(
-            &format!("{}{}", Self::PREFIX, &self.to_string()),
-            serializer,
-        )
+        String::serialize(&self.to_string(), serializer)
     }
 }
 
@@ -41,7 +38,7 @@ impl<'de> Deserialize<'de> for PublicKey {
 
 impl fmt::Display for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        hex::encode(self.0).fmt(f)
+        write!(f, "{}{}", Self::PREFIX, hex::encode(self.0))
     }
 }
 
