@@ -304,9 +304,6 @@ pub struct Transaction {
 }
 
 impl Transaction {
-    const SIACOIN_OUTPUT_ID_PREFIX: Specifier = specifier!("siacoin output");
-    const SIAFUND_OUTPUT_ID_PREFIX: Specifier = specifier!("siafund output");
-
     pub fn encode_no_sigs<W: std::io::Write>(&self, w: &mut W) -> Result<(), encoding::Error> {
         self.siacoin_inputs.encode_v1(w)?;
         self.siacoin_outputs.encode_v1(w)?;
@@ -500,28 +497,37 @@ impl Transaction {
     pub fn id(&self) -> TransactionID {
         let mut state = Params::new().hash_length(32).to_state();
         self.encode_no_sigs(&mut state).unwrap();
-        let hash = state.finalize();
-        hash.into()
+
+        state.finalize().into()
     }
 
+    fn derive_child_id<T: From<blake2b_simd::Hash>>(&self, prefix: &Specifier, i: usize) -> T {
+        let mut state = Params::new().hash_length(32).to_state();
+        state.update(prefix.as_bytes());
+        self.encode_no_sigs(&mut state).unwrap();
+        state.update(&(i as u64).to_le_bytes());
+        state.finalize().into()
+    }
+
+    /// siacoin_output_id returns the SiacoinOutputID for the i-th siacoin output of the transaction
     pub fn siacoin_output_id(&self, i: usize) -> SiacoinOutputID {
-        let mut state = Params::new().hash_length(32).to_state();
+        const SIACOIN_OUTPUT_ID_PREFIX: Specifier = specifier!("siacoin output");
 
-        state.update(Self::SIACOIN_OUTPUT_ID_PREFIX.as_bytes());
-        self.encode_no_sigs(&mut state).unwrap();
-
-        let h = state.update(&i.to_le_bytes()).finalize();
-        SiacoinOutputID::from(h)
+        self.derive_child_id(&SIACOIN_OUTPUT_ID_PREFIX, i)
     }
 
+    /// siafund_output_id returns the SiafundOutputID for the i-th siafund output of the transaction
     pub fn siafund_output_id(&self, i: usize) -> SiafundOutputID {
-        let mut state = Params::new().hash_length(32).to_state();
+        const SIAFUND_OUTPUT_ID_PREFIX: Specifier = specifier!("siafund output");
 
-        state.update(Self::SIAFUND_OUTPUT_ID_PREFIX.as_bytes());
-        self.encode_no_sigs(&mut state).unwrap();
+        self.derive_child_id(&SIAFUND_OUTPUT_ID_PREFIX, i)
+    }
 
-        let h = state.update(&i.to_le_bytes()).finalize();
-        SiafundOutputID::from(h)
+    /// file_contract_id returns the FileContractID for the i-th file contract of the transaction
+    pub fn file_contract_id(&self, i: usize) -> FileContractID {
+        const FILE_CONTRACT_ID_PREFIX: Specifier = specifier!("file contract");
+
+        self.derive_child_id(&FILE_CONTRACT_ID_PREFIX, i)
     }
 }
 
@@ -1252,7 +1258,7 @@ mod tests {
         ];
 
         for (expected_str, public_key) in test_cases {
-            let expected = Address::parse_string(&expected_str).unwrap();
+            let expected = Address::parse_string(expected_str).unwrap();
 
             let public_key = PublicKey::new(public_key.as_slice().try_into().unwrap());
             let addr = UnlockConditions::standard_unlock_conditions(public_key).address();

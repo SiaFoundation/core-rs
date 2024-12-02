@@ -687,7 +687,7 @@ mod tests {
             // json
             let serialized = serde_json::to_string(&tc.policy).unwrap();
             assert_eq!(serialized, tc.json, "json serialization failed");
-            let deserialized: SatisfiedPolicy = serde_json::from_str(&tc.json).unwrap();
+            let deserialized: SatisfiedPolicy = serde_json::from_str(tc.json).unwrap();
             assert_eq!(deserialized, tc.policy, "json deserialization failed");
         }
     }
