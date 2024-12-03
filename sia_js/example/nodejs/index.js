@@ -1,4 +1,4 @@
-import { Seed, UnlockConditions } from "sia_js";
+import { Seed, UnlockConditions, Transaction } from "sia_js";
 
 try {
   const s = Seed.generate(),

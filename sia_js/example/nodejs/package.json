@@ -5,6 +5,7 @@
   "author": "",
   "license": "MIT",
   "description": "",
+  "type":"module",
   "dependencies": {
     "sia_js": "file:../../pkg"
   }
