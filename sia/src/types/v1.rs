@@ -14,7 +14,7 @@ use crate::encoding::{
     V1SiaEncodable, V1SiaEncode,
 };
 use crate::merkle::{Accumulator, LEAF_HASH_PREFIX};
-use crate::signing::{PrivateKey, PublicKey};
+use crate::signing::PublicKey;
 use crate::types::{specifier, Specifier};
 
 use super::currency::Currency;
@@ -316,54 +316,44 @@ impl Transaction {
         self.arbitrary_data.encode_v1(w)
     }
 
-    pub(crate) fn whole_sig_hash(
+    pub fn whole_sig_hash<T: AsRef<[u8; 32]>>(
         &self,
         cs: &ChainState,
-        parent_id: &Hash256,
+        parent_id: &T,
         public_key_index: u64,
         timelock: u64,
-        covered_sigs: &Vec<usize>,
-    ) -> Result<Hash256, encoding::Error> {
+    ) -> Hash256 {
         let mut state = Params::new().hash_length(32).to_state();
 
         state.update(&(self.siacoin_inputs.len() as u64).to_le_bytes());
         for input in self.siacoin_inputs.iter() {
             state.update(cs.replay_prefix());
-            input.encode_v1(&mut state)?;
+            input.encode_v1(&mut state).unwrap();
         }
 
-        self.siacoin_outputs.encode_v1(&mut state)?;
-        self.file_contracts.encode_v1(&mut state)?;
-        self.file_contract_revisions.encode_v1(&mut state)?;
-        self.storage_proofs.encode_v1(&mut state)?;
+        self.siacoin_outputs.encode_v1(&mut state).unwrap();
+        self.file_contracts.encode_v1(&mut state).unwrap();
+        self.file_contract_revisions.encode_v1(&mut state).unwrap();
+        self.storage_proofs.encode_v1(&mut state).unwrap();
 
         state.update(&(self.siafund_inputs.len() as u64).to_le_bytes());
         for input in self.siafund_inputs.iter() {
             state.update(cs.replay_prefix());
-            input.encode_v1(&mut state)?;
+            input.encode_v1(&mut state).unwrap();
         }
 
-        self.siafund_outputs.encode_v1(&mut state)?;
-        self.miner_fees.encode_v1(&mut state)?;
-        self.arbitrary_data.encode_v1(&mut state)?;
+        self.siafund_outputs.encode_v1(&mut state).unwrap();
+        self.miner_fees.encode_v1(&mut state).unwrap();
+        self.arbitrary_data.encode_v1(&mut state).unwrap();
 
-        parent_id.encode_v1(&mut state)?;
-        public_key_index.encode_v1(&mut state)?;
-        timelock.encode_v1(&mut state)?;
+        state.update(parent_id.as_ref());
+        public_key_index.encode_v1(&mut state).unwrap();
+        timelock.encode_v1(&mut state).unwrap();
 
-        for &i in covered_sigs {
-            if i >= self.signatures.len() {
-                return Err(encoding::Error::Custom(
-                    "signatures index out of bounds".to_string(),
-                ));
-            }
-            self.signatures[i].encode_v1(&mut state)?;
-        }
-
-        Ok(state.finalize().into())
+        state.finalize().into()
     }
 
-    pub(crate) fn partial_sig_hash(
+    pub fn partial_sig_hash(
         &self,
         cs: &ChainState,
         covered_fields: &CoveredFields,
@@ -462,36 +452,6 @@ impl Transaction {
             self.signatures[i].encode_v1(&mut state)?;
         }
         Ok(state.finalize().into())
-    }
-
-    pub fn sign(
-        &self,
-        cs: &ChainState,
-        covered_fields: &CoveredFields,
-        parent_id: Hash256,
-        public_key_index: u64,
-        timelock: u64,
-        private_key: &PrivateKey,
-    ) -> Result<TransactionSignature, encoding::Error> {
-        let sig_hash = if covered_fields.whole_transaction {
-            self.whole_sig_hash(
-                cs,
-                &parent_id,
-                public_key_index,
-                timelock,
-                &covered_fields.signatures,
-            )
-        } else {
-            self.partial_sig_hash(cs, covered_fields)
-        }?;
-
-        Ok(TransactionSignature {
-            parent_id,
-            public_key_index,
-            timelock,
-            covered_fields: covered_fields.clone(),
-            signature: private_key.sign_hash(&sig_hash).data().to_vec(),
-        })
     }
 
     pub fn id(&self) -> TransactionID {
@@ -1020,7 +980,7 @@ mod tests {
     }
 
     #[test]
-    fn test_transaction_sign() {
+    fn test_transaction_whole_sig_hash() {
         let cs = ChainState {
             state: State {
                 index: ChainIndex {
@@ -1081,12 +1041,19 @@ mod tests {
             136, 215, 58, 248, 45, 30, 78, 97, 128, 111, 82, 204, 43, 233, 223, 111, 110, 29, 73,
             157, 52, 25, 242, 96, 131, 16, 187, 22, 232, 107, 17, 205,
         ]);
+        struct TestCase {
+            transaction: Transaction,
+            parent_id: Hash256,
+            timelock: u64,
+            key_index: u64,
+            expected: &'static str,
+        }
         let test_cases = vec![
-            (
-                Transaction {
+            TestCase{
+                transaction: Transaction {
                     siacoin_inputs: vec![
                         SiacoinInput{
-                            parent_id: SiacoinOutputID::from([32,11,215,36,166,174,135,0,92,215,179,18,74,229,52,154,221,194,213,216,219,47,225,205,251,84,248,2,69,252,37,117]),
+                            parent_id: siacoin_id!("200bd724a6ae87005cd7b3124ae5349addc2d5d8db2fe1cdfb54f80245fc2575"),
                             unlock_conditions: UnlockConditions::standard_unlock_conditions(pk.public_key()),
                         }
                     ],
@@ -1105,25 +1072,184 @@ mod tests {
                     arbitrary_data: Vec::new(),
                     signatures: Vec::new(),
                 },
-                "7a5db98318b5ecad2954d41ba2084c908823ebf4000b95543f352478066a0d04bf4829e3e6d086b42ff9d943f68981c479798fd42bf6f63dac254f4294a37609"
-            )
+                parent_id: hash_256!("200bd724a6ae87005cd7b3124ae5349addc2d5d8db2fe1cdfb54f80245fc2575"),
+                timelock: 0,
+                key_index: 0,
+                expected: "a4b1855c546db7ec902237f730717faae96187db8ce9fe139504323a639f731e"
+            },
+            TestCase{
+                transaction: serde_json::from_str("{\"siacoinInputs\":[{\"parentID\":\"750d22eff727689d1d8d1c83e513a30bb68ee7f9125a4dafc882459e34c2069d\",\"unlockConditions\":{\"timelock\":0,\"publicKeys\":[\"ed25519:800ed6c2760e3e4ba1ff00128585c8cf8fed2e3dc1e3da1eb92d49f405bd6360\"],\"signaturesRequired\":6312611591377486220}}],\"siacoinOutputs\":[{\"value\":\"890415399000000000000000000000000\",\"address\":\"480a064b5fca13002a7fe575845154bbf0b3af4cc4f147cbed387d43cce3568ae2497366eaa7\"}],\"fileContracts\":[{\"filesize\":0,\"fileMerkleRoot\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"windowStart\":10536451586783908586,\"windowEnd\":9324702155635244357,\"payout\":\"0\",\"validProofOutputs\":[{\"value\":\"1933513214000000000000000000000000\",\"address\":\"944524fff2c49c401e748db37cfda7569fa6df35b704fe716394f2ac3f40ce87b4506e9906f0\"}],\"missedProofOutputs\":[{\"value\":\"2469287901000000000000000000000000\",\"address\":\"1df67838262d7109ffcd9018f183b1eb33f05659a274b89ea6b52ff3617d34a770e9dd071d2e\"}],\"unlockHash\":\"000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69\",\"revisionNumber\":9657412421282982780}],\"fileContractRevisions\":[{\"parentID\":\"e4e26d93771d3bbb3d9dd306105d77cfb3a6254d1cc3495903af6e013442c63c\",\"unlockConditions\":{\"timelock\":0,\"publicKeys\":[\"ed25519:e6b9cde4eb058f8ecbb083d99779cb0f6d518d5386f019af6ead09fa52de8567\"],\"signaturesRequired\":206644730660526450},\"revisionNumber\":10595710523108536025,\"filesize\":0,\"fileMerkleRoot\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"windowStart\":4348934140507359445,\"windowEnd\":14012366839994454386,\"validProofOutputs\":[{\"value\":\"2435858510000000000000000000000000\",\"address\":\"543bc0eda69f728d0a0fbce08e5bfc5ed7b961300e0af226949e135f7d12e32f0544e5262d6f\"}],\"missedProofOutputs\":[{\"value\":\"880343701000000000000000000000000\",\"address\":\"7b7f9aee981fe0d93bb3f49c6233cf847ebdd39d7dc5253f7fc330df2167073b35f035703237\"}],\"unlockHash\":\"000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69\"}],\"storageProofs\":[{\"parentID\":\"c0b9e98c9e03a2740c75d673871c1ee91f36d1bb329ff3ddbf1dfa8c6e1a64eb\",\"leaf\":\"b78fa521dc62d9ced82bc3b61e0aa5a5c221d6cca5db63d94c9879543fb98c0a971094a89cd4408487ae32902248d321b545f9a051729aa0bb1725b848e3d453\",\"proof\":[\"fe08c0a061475e7e5dec19e717cf98792fa7b555d0b5d3540a05db09f59ab8de\"]}],\"minerFees\":[\"241119475000000000000000000000000\"],\"arbitraryData\":[\"2shzIHEUJYwuNHz6c/gPz+aTEWZRTpDTmemX9yYAKlY=\"],\"signatures\":[{\"parentID\":\"06d1fca03c5ddd9b09116db1b97c5451f7dc792b05362969f83e3e8dc1007f46\",\"publicKeyIndex\":6088345341283457116,\"timelock\":2014247885072555224,\"coveredFields\":{\"wholeTransaction\":true},\"signature\":\"2XNEKGZrl9RhMa2JmGsvcmqQWAIX/uxtMwLnPI6VJPcXqub6qYIuoAThYp9NAwadk+1GG6CXC66g4rOjFYuNSA==\"}]}").expect("valid transaction"),
+                parent_id: hash_256!("59c36e89224f681c1a843c3f30e12c77823d17581d4061724ec6d61555c49095"),
+                timelock: 0,
+                key_index: 0,
+                expected: "f93b095e09f8c860ba8638737ba5f4c81a311af1a840c6b18635009e4d90574e",
+            },
+            TestCase{
+                transaction: serde_json::from_str("{\"siacoinInputs\":[{\"parentID\":\"750d22eff727689d1d8d1c83e513a30bb68ee7f9125a4dafc882459e34c2069d\",\"unlockConditions\":{\"timelock\":0,\"publicKeys\":[\"ed25519:800ed6c2760e3e4ba1ff00128585c8cf8fed2e3dc1e3da1eb92d49f405bd6360\"],\"signaturesRequired\":6312611591377486220}}],\"siacoinOutputs\":[{\"value\":\"890415399000000000000000000000000\",\"address\":\"480a064b5fca13002a7fe575845154bbf0b3af4cc4f147cbed387d43cce3568ae2497366eaa7\"}],\"fileContracts\":[{\"filesize\":0,\"fileMerkleRoot\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"windowStart\":10536451586783908586,\"windowEnd\":9324702155635244357,\"payout\":\"0\",\"validProofOutputs\":[{\"value\":\"1933513214000000000000000000000000\",\"address\":\"944524fff2c49c401e748db37cfda7569fa6df35b704fe716394f2ac3f40ce87b4506e9906f0\"}],\"missedProofOutputs\":[{\"value\":\"2469287901000000000000000000000000\",\"address\":\"1df67838262d7109ffcd9018f183b1eb33f05659a274b89ea6b52ff3617d34a770e9dd071d2e\"}],\"unlockHash\":\"000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69\",\"revisionNumber\":9657412421282982780}],\"fileContractRevisions\":[{\"parentID\":\"e4e26d93771d3bbb3d9dd306105d77cfb3a6254d1cc3495903af6e013442c63c\",\"unlockConditions\":{\"timelock\":0,\"publicKeys\":[\"ed25519:e6b9cde4eb058f8ecbb083d99779cb0f6d518d5386f019af6ead09fa52de8567\"],\"signaturesRequired\":206644730660526450},\"revisionNumber\":10595710523108536025,\"filesize\":0,\"fileMerkleRoot\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"windowStart\":4348934140507359445,\"windowEnd\":14012366839994454386,\"validProofOutputs\":[{\"value\":\"2435858510000000000000000000000000\",\"address\":\"543bc0eda69f728d0a0fbce08e5bfc5ed7b961300e0af226949e135f7d12e32f0544e5262d6f\"}],\"missedProofOutputs\":[{\"value\":\"880343701000000000000000000000000\",\"address\":\"7b7f9aee981fe0d93bb3f49c6233cf847ebdd39d7dc5253f7fc330df2167073b35f035703237\"}],\"unlockHash\":\"000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69\"}],\"storageProofs\":[{\"parentID\":\"c0b9e98c9e03a2740c75d673871c1ee91f36d1bb329ff3ddbf1dfa8c6e1a64eb\",\"leaf\":\"b78fa521dc62d9ced82bc3b61e0aa5a5c221d6cca5db63d94c9879543fb98c0a971094a89cd4408487ae32902248d321b545f9a051729aa0bb1725b848e3d453\",\"proof\":[\"fe08c0a061475e7e5dec19e717cf98792fa7b555d0b5d3540a05db09f59ab8de\"]}],\"minerFees\":[\"241119475000000000000000000000000\"],\"arbitraryData\":[\"2shzIHEUJYwuNHz6c/gPz+aTEWZRTpDTmemX9yYAKlY=\"],\"signatures\":[{\"parentID\":\"06d1fca03c5ddd9b09116db1b97c5451f7dc792b05362969f83e3e8dc1007f46\",\"publicKeyIndex\":6088345341283457116,\"timelock\":2014247885072555224,\"coveredFields\":{\"wholeTransaction\":true},\"signature\":\"2XNEKGZrl9RhMa2JmGsvcmqQWAIX/uxtMwLnPI6VJPcXqub6qYIuoAThYp9NAwadk+1GG6CXC66g4rOjFYuNSA==\"}]}").expect("valid transaction"),
+                parent_id: hash_256!("59c36e89224f681c1a843c3f30e12c77823d17581d4061724ec6d61555c49095"),
+                timelock: 467251739279473577,
+                key_index: 1493934879227647507,
+                expected: "7aea4ec52e1f7de90261c4448a928081d4be6015252e482ec9c1cfa01663d768",
+            },
         ];
 
-        for (txn, expected) in test_cases {
-            let sig = txn
-                .sign(
-                    &cs,
-                    &CoveredFields::whole_transaction(),
-                    Hash256::from(<SiacoinOutputID as Into<[u8; 32]>>::into(
-                        txn.siacoin_inputs[0].parent_id,
-                    )),
-                    0,
-                    0,
-                    &pk,
-                )
-                .expect("");
+        for (i, case) in test_cases.iter().enumerate() {
+            let sig_hash = case.transaction.whole_sig_hash(
+                &cs,
+                &case.parent_id,
+                case.key_index,
+                case.timelock,
+            );
+            assert_eq!(sig_hash.to_string(), case.expected, "case {}", i)
+        }
+    }
 
-            assert_eq!(hex::encode(sig.signature), expected)
+    #[test]
+    fn test_transaction_partial_sig_hash() {
+        let cs = ChainState {
+            state: State {
+                index: ChainIndex {
+                    height: 1,
+                    id: BlockID::default(),
+                },
+                prev_timestamps: [OffsetDateTime::UNIX_EPOCH; 11],
+                depth: BlockID::default(),
+                child_target: BlockID::default(),
+                siafund_pool: Currency::new(0),
+                oak_time: Duration::new(0, 0),
+                oak_target: BlockID::default(),
+                foundation_primary_address: Address::new([0u8; 32]),
+                foundation_failsafe_address: Address::new([0u8; 32]),
+                total_work: Work::zero(),
+                difficulty: Work::zero(),
+                oak_work: Work::zero(),
+                attestations: 0,
+                elements: ElementAccumulator::default(),
+            },
+            network: Network {
+                name: "test".to_string(),
+                initial_coinbase: Currency::new(0),
+                minimum_coinbase: Currency::new(0),
+                initial_target: BlockID::default(),
+                block_interval: Duration::new(1, 0),
+                maturity_delay: 0,
+                hardfork_dev_addr: HardforkDevAddr {
+                    height: 0,
+                    old_address: Address::new([0u8; 32]),
+                    new_address: Address::new([0u8; 32]),
+                },
+                hardfork_tax: HardforkTax { height: 10 },
+                hardfork_storage_proof: HardforkStorageProof { height: 0 },
+                hardfork_asic: HardforkASIC {
+                    height: 0,
+                    oak_time: Duration::new(0, 0),
+                    oak_target: BlockID::default(),
+                },
+                hardfork_oak: HardforkOak {
+                    height: 0,
+                    fix_height: 0,
+                    genesis_timestamp: OffsetDateTime::UNIX_EPOCH,
+                },
+                hardfork_foundation: HardforkFoundation {
+                    height: 0,
+                    primary_address: Address::new([0u8; 32]),
+                    failsafe_address: Address::new([0u8; 32]),
+                },
+                hardfork_v2: HardforkV2 {
+                    // test was made for pre-v2
+                    allow_height: 100,
+                    require_height: 100,
+                },
+            },
+        };
+        let txn: Transaction = serde_json::from_str("{\"siacoinInputs\":[{\"parentID\":\"750d22eff727689d1d8d1c83e513a30bb68ee7f9125a4dafc882459e34c2069d\",\"unlockConditions\":{\"timelock\":0,\"publicKeys\":[\"ed25519:800ed6c2760e3e4ba1ff00128585c8cf8fed2e3dc1e3da1eb92d49f405bd6360\"],\"signaturesRequired\":6312611591377486220}}],\"siacoinOutputs\":[{\"value\":\"890415399000000000000000000000000\",\"address\":\"480a064b5fca13002a7fe575845154bbf0b3af4cc4f147cbed387d43cce3568ae2497366eaa7\"}],\"fileContracts\":[{\"filesize\":0,\"fileMerkleRoot\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"windowStart\":10536451586783908586,\"windowEnd\":9324702155635244357,\"payout\":\"0\",\"validProofOutputs\":[{\"value\":\"1933513214000000000000000000000000\",\"address\":\"944524fff2c49c401e748db37cfda7569fa6df35b704fe716394f2ac3f40ce87b4506e9906f0\"}],\"missedProofOutputs\":[{\"value\":\"2469287901000000000000000000000000\",\"address\":\"1df67838262d7109ffcd9018f183b1eb33f05659a274b89ea6b52ff3617d34a770e9dd071d2e\"}],\"unlockHash\":\"000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69\",\"revisionNumber\":9657412421282982780}],\"fileContractRevisions\":[{\"parentID\":\"e4e26d93771d3bbb3d9dd306105d77cfb3a6254d1cc3495903af6e013442c63c\",\"unlockConditions\":{\"timelock\":0,\"publicKeys\":[\"ed25519:e6b9cde4eb058f8ecbb083d99779cb0f6d518d5386f019af6ead09fa52de8567\"],\"signaturesRequired\":206644730660526450},\"revisionNumber\":10595710523108536025,\"filesize\":0,\"fileMerkleRoot\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"windowStart\":4348934140507359445,\"windowEnd\":14012366839994454386,\"validProofOutputs\":[{\"value\":\"2435858510000000000000000000000000\",\"address\":\"543bc0eda69f728d0a0fbce08e5bfc5ed7b961300e0af226949e135f7d12e32f0544e5262d6f\"}],\"missedProofOutputs\":[{\"value\":\"880343701000000000000000000000000\",\"address\":\"7b7f9aee981fe0d93bb3f49c6233cf847ebdd39d7dc5253f7fc330df2167073b35f035703237\"}],\"unlockHash\":\"000000000000000000000000000000000000000000000000000000000000000089eb0d6a8a69\"}],\"storageProofs\":[{\"parentID\":\"c0b9e98c9e03a2740c75d673871c1ee91f36d1bb329ff3ddbf1dfa8c6e1a64eb\",\"leaf\":\"b78fa521dc62d9ced82bc3b61e0aa5a5c221d6cca5db63d94c9879543fb98c0a971094a89cd4408487ae32902248d321b545f9a051729aa0bb1725b848e3d453\",\"proof\":[\"fe08c0a061475e7e5dec19e717cf98792fa7b555d0b5d3540a05db09f59ab8de\"]}],\"minerFees\":[\"241119475000000000000000000000000\"],\"arbitraryData\":[\"2shzIHEUJYwuNHz6c/gPz+aTEWZRTpDTmemX9yYAKlY=\"],\"signatures\":[{\"parentID\":\"06d1fca03c5ddd9b09116db1b97c5451f7dc792b05362969f83e3e8dc1007f46\",\"publicKeyIndex\":6088345341283457116,\"timelock\":2014247885072555224,\"coveredFields\":{\"wholeTransaction\":true},\"signature\":\"2XNEKGZrl9RhMa2JmGsvcmqQWAIX/uxtMwLnPI6VJPcXqub6qYIuoAThYp9NAwadk+1GG6CXC66g4rOjFYuNSA==\"}]}").expect("valid transaction");
+
+        let test_cases = vec![
+            (
+                CoveredFields {
+                    whole_transaction: false,
+                    siacoin_inputs: vec![0],
+                    siacoin_outputs: vec![0],
+                    file_contracts: vec![0],
+                    file_contract_revisions: vec![0],
+                    storage_proofs: vec![0],
+                    siafund_inputs: vec![],
+                    siafund_outputs: vec![],
+                    miner_fees: vec![0],
+                    arbitrary_data: vec![0],
+                    signatures: vec![0],
+                },
+                "5a9a69acb9211dc952b7458754e9fdf7f86fef419c03e8054f992d95c14ebf63",
+            ),
+            (
+                CoveredFields {
+                    whole_transaction: false,
+                    siacoin_inputs: vec![],
+                    siacoin_outputs: vec![0],
+                    file_contracts: vec![0],
+                    file_contract_revisions: vec![0],
+                    storage_proofs: vec![0],
+                    siafund_inputs: vec![],
+                    siafund_outputs: vec![],
+                    miner_fees: vec![0],
+                    arbitrary_data: vec![0],
+                    signatures: vec![0],
+                },
+                "81c3e106089f1c86f3402c3bbc0d572d49eafe559961b18344102de4ee1abd94",
+            ),
+            (
+                CoveredFields {
+                    whole_transaction: false,
+                    siacoin_inputs: vec![0],
+                    siacoin_outputs: vec![],
+                    file_contracts: vec![0],
+                    file_contract_revisions: vec![0],
+                    storage_proofs: vec![0],
+                    siafund_inputs: vec![],
+                    siafund_outputs: vec![],
+                    miner_fees: vec![0],
+                    arbitrary_data: vec![0],
+                    signatures: vec![0],
+                },
+                "78d8dca99a5a775e5223867af702bf6304326784c4e7f3fd431043504a7f7a98",
+            ),
+            (
+                CoveredFields {
+                    whole_transaction: false,
+                    siacoin_inputs: vec![0],
+                    siacoin_outputs: vec![0],
+                    file_contracts: vec![0],
+                    file_contract_revisions: vec![0],
+                    storage_proofs: vec![0],
+                    siafund_inputs: vec![],
+                    siafund_outputs: vec![],
+                    miner_fees: vec![0],
+                    arbitrary_data: vec![],
+                    signatures: vec![0],
+                },
+                "79efc21fbdbf9536fe90b49b4858d5e2945a6bcb28f82b49b189d793f22f150b",
+            ),
+            (
+                CoveredFields {
+                    whole_transaction: false,
+                    siacoin_inputs: vec![],
+                    siacoin_outputs: vec![],
+                    file_contracts: vec![],
+                    file_contract_revisions: vec![0],
+                    storage_proofs: vec![],
+                    siafund_inputs: vec![],
+                    siafund_outputs: vec![],
+                    miner_fees: vec![],
+                    arbitrary_data: vec![],
+                    signatures: vec![],
+                },
+                "22d26fe3e660d58a26a7da864357c1930c3c24393dd5712d851e0c1c0a0706c2",
+            ),
+        ];
+
+        for (i, (cf, expected)) in test_cases.iter().enumerate() {
+            let sig_hash = txn.partial_sig_hash(&cs, cf).expect("valid sig hash");
+            assert_eq!(sig_hash.to_string(), *expected, "case {}", i)
         }
     }
 
