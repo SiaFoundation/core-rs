@@ -322,35 +322,35 @@ impl Transaction {
         parent_id: &T,
         public_key_index: u64,
         timelock: u64,
-    ) -> Hash256 {
+    ) -> Result<Hash256, encoding::Error> {
         let mut state = Params::new().hash_length(32).to_state();
 
         state.update(&(self.siacoin_inputs.len() as u64).to_le_bytes());
         for input in self.siacoin_inputs.iter() {
             state.update(cs.replay_prefix());
-            input.encode_v1(&mut state).unwrap();
+            input.encode_v1(&mut state)?;
         }
 
-        self.siacoin_outputs.encode_v1(&mut state).unwrap();
-        self.file_contracts.encode_v1(&mut state).unwrap();
-        self.file_contract_revisions.encode_v1(&mut state).unwrap();
-        self.storage_proofs.encode_v1(&mut state).unwrap();
+        self.siacoin_outputs.encode_v1(&mut state)?;
+        self.file_contracts.encode_v1(&mut state)?;
+        self.file_contract_revisions.encode_v1(&mut state)?;
+        self.storage_proofs.encode_v1(&mut state)?;
 
         state.update(&(self.siafund_inputs.len() as u64).to_le_bytes());
         for input in self.siafund_inputs.iter() {
             state.update(cs.replay_prefix());
-            input.encode_v1(&mut state).unwrap();
+            input.encode_v1(&mut state)?;
         }
 
-        self.siafund_outputs.encode_v1(&mut state).unwrap();
-        self.miner_fees.encode_v1(&mut state).unwrap();
-        self.arbitrary_data.encode_v1(&mut state).unwrap();
+        self.siafund_outputs.encode_v1(&mut state)?;
+        self.miner_fees.encode_v1(&mut state)?;
+        self.arbitrary_data.encode_v1(&mut state)?;
 
         state.update(parent_id.as_ref());
-        public_key_index.encode_v1(&mut state).unwrap();
-        timelock.encode_v1(&mut state).unwrap();
+        public_key_index.encode_v1(&mut state)?;
+        timelock.encode_v1(&mut state)?;
 
-        state.finalize().into()
+        Ok(state.finalize().into())
     }
 
     pub fn partial_sig_hash(
@@ -1094,12 +1094,10 @@ mod tests {
         ];
 
         for (i, case) in test_cases.iter().enumerate() {
-            let sig_hash = case.transaction.whole_sig_hash(
-                &cs,
-                &case.parent_id,
-                case.key_index,
-                case.timelock,
-            );
+            let sig_hash = case
+                .transaction
+                .whole_sig_hash(&cs, &case.parent_id, case.key_index, case.timelock)
+                .expect("encoded sig hash");
             assert_eq!(sig_hash.to_string(), case.expected, "case {}", i)
         }
     }
