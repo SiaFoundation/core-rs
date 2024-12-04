@@ -436,7 +436,7 @@ impl SiaDecodable for State {
 
 /// ChainState contains the network parameters and the state of the chain.
 /// It is used to determine the consensus rules in effect for a particular block.
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub struct ChainState {
     pub network: Network,
     pub state: State,
@@ -445,7 +445,7 @@ pub struct ChainState {
 impl ChainState {
     /// child_height returns the height of the next block
     pub fn child_height(&self) -> u64 {
-        self.state.index.height + 1
+        self.state.index.child_height()
     }
 
     /// block_reward returns the reward for mining a child block
