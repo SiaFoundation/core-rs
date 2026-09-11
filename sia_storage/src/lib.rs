@@ -590,6 +590,45 @@ pub fn validate_recovery_phrase(phrase: &str) -> Result<(), SeedError> {
 
 #[cfg(test)]
 mod test {
+    /// The indexer spells these fields logoURL and serviceURL, in both the
+    /// registration request and the account response. Decoding an account with
+    /// the names it actually sends is the only thing that catches a rename
+    /// drifting from the server, since the fields are optional and a mismatch
+    /// leaves them None rather than failing.
+    #[test]
+    fn app_decodes_the_field_names_the_indexer_sends() {
+        let raw = r#"{
+            "id": "0000000000000000000000000000000000000000000000000000000000000001",
+            "name": "some app",
+            "description": "some description",
+            "logoURL": "https://example.invalid/logo.png",
+            "serviceURL": "https://example.invalid"
+        }"#;
+        let app: crate::App = serde_json::from_str(raw).expect("app should decode");
+        assert_eq!(app.name, "some app");
+        assert_eq!(
+            app.logo_url.as_deref(),
+            Some("https://example.invalid/logo.png")
+        );
+        assert_eq!(app.service_url.as_deref(), Some("https://example.invalid"));
+    }
+
+    /// Serializing has to produce the same names, because a binding that hands
+    /// this on as JSON is parsed by a consumer keyed to them.
+    #[test]
+    fn app_serializes_the_field_names_the_indexer_sends() {
+        let app = crate::App {
+            id: Default::default(),
+            name: "some app".into(),
+            description: String::new(),
+            logo_url: Some("https://example.invalid/logo.png".into()),
+            service_url: Some("https://example.invalid".into()),
+        };
+        let out = serde_json::to_string(&app).expect("app should encode");
+        assert!(out.contains("\"logoURL\""), "got {out}");
+        assert!(out.contains("\"serviceURL\""), "got {out}");
+    }
+
     use crate::download::Download;
     use crate::hosts::QueueError;
     use crate::rhp4::{Client, mock};
