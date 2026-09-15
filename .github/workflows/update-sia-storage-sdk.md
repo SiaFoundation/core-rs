@@ -199,6 +199,9 @@ safe-outputs:
       - "swift/**"
       - "kotlin/**"
       - "examples/**"
+      - "src/**"
+      - "README.md"
+      - ".gitignore"
     protected-files:
       policy: request_review
       exclude: ["gradle.properties", "README.md"]
@@ -315,6 +318,12 @@ release would be a downgrade. Nothing was modified; call `noop` and stop.
 the xcframework and a macOS toolchain. Regenerating `SiaStorageSDK.swift` and updating
 `Wrappers.swift` is all you can verify — the repository's own `swift.yml` builds and
 tests Swift on the pull request. Say so in the body rather than implying Swift passed.
+
+6. **Check the changed files.** Run `git status` and revert any change outside
+   `Cargo.toml`, `Cargo.lock`, `Package.swift`, `SiaStorageSDK.podspec`, `python/`,
+   `swift/`, `kotlin/`, `examples/`, `src/`, `README.md`, and `.gitignore`. Any other
+   file rejects the whole pull request. List what you reverted in the body, along with
+   any `.github/` workflow change the update needs.
 
 ## Output
 
