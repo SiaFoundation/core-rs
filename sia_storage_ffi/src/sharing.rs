@@ -5,7 +5,9 @@ use std::time::SystemTime;
 use sia_core::types::Hash256;
 use tokio_util::sync::CancellationToken;
 
-use crate::{Download, DownloadError, DownloadOptions, Error, Host, PinnedObject, Sdk, spawn};
+use crate::{
+    Download, DownloadError, DownloadOptions, Error, Host, HostQuery, PinnedObject, Sdk, spawn,
+};
 
 fn seed_from_vec(seed: Vec<u8>) -> Result<[u8; 32], Error> {
     seed.try_into()
@@ -286,13 +288,16 @@ impl SharedSdk {
         .await?
     }
 
-    /// Returns the hosts serving this key's objects. Mirrors `Sdk::hosts` but is
-    /// scoped to the sharing key, so the set is already limited to hosts holding
-    /// its objects.
-    pub async fn hosts(&self) -> Result<Vec<Host>, Error> {
+    /// Returns the hosts serving this key's objects, optionally filtered by a
+    /// query. Mirrors `Sdk::hosts` but is scoped to the sharing key, so the set
+    /// is already limited to hosts holding its objects.
+    #[uniffi::method(default(query = None))]
+    pub async fn hosts(&self, query: Option<HostQuery>) -> Result<Vec<Host>, Error> {
         let shared = self.inner.clone();
         spawn(async move {
-            let hosts = shared.hosts(Default::default()).await?;
+            let hosts = shared
+                .hosts(query.map(Into::into).unwrap_or_default())
+                .await?;
             Ok(hosts.into_iter().map(|h| h.into()).collect())
         })
         .await?

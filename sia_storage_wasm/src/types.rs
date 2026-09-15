@@ -215,19 +215,35 @@ pub(crate) fn download_options_from_js(val: JsValue) -> sia_storage::DownloadOpt
 #[derive(Default, serde::Deserialize, tsify::Tsify)]
 #[serde(rename_all = "camelCase")]
 pub struct HostQuery {
+    #[tsify(optional)]
+    pub location: Option<GeoLocation>,
+    #[tsify(optional)]
     pub country: Option<String>,
+    #[tsify(optional)]
     pub limit: Option<u64>,
+    #[tsify(optional)]
     pub offset: Option<u64>,
+}
+
+/// Geographic coordinates used to sort hosts by proximity.
+#[derive(serde::Deserialize, tsify::Tsify)]
+#[serde(rename_all = "camelCase")]
+pub struct GeoLocation {
+    pub latitude: f64,
+    pub longitude: f64,
 }
 
 impl From<HostQuery> for sia_storage::HostQuery {
     fn from(q: HostQuery) -> Self {
         Self {
             protocol: Some(Protocol::QUIC),
+            location: q.location.map(|location| sia_storage::GeoLocation {
+                latitude: location.latitude,
+                longitude: location.longitude,
+            }),
             country: q.country,
             limit: q.limit,
             offset: q.offset,
-            ..Default::default()
         }
     }
 }

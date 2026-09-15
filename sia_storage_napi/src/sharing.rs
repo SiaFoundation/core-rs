@@ -6,7 +6,7 @@ use std::str::FromStr;
 use std::sync::Mutex;
 use tokio_stream::StreamExt;
 
-use crate::{DownloadOptions, Host, PinnedObject, Sdk, io};
+use crate::{DownloadOptions, Host, HostQuery, PinnedObject, Sdk, io};
 
 fn seed_from_buffer(seed: Buffer) -> Result<[u8; 32]> {
     seed.as_ref()
@@ -271,14 +271,14 @@ impl SharedSdk {
             .collect())
     }
 
-    /// Returns the hosts serving this key's objects. Mirrors `Sdk.hosts()` but
-    /// is scoped to the sharing key, so the set is already limited to hosts
-    /// holding its objects.
+    /// Returns the hosts serving this key's objects, optionally filtered by a
+    /// query. Mirrors `Sdk.hosts()` but is scoped to the sharing key, so the
+    /// set is already limited to hosts holding its objects.
     #[napi]
-    pub async fn hosts(&self) -> Result<Vec<Host>> {
+    pub async fn hosts(&self, query: Option<HostQuery>) -> Result<Vec<Host>> {
         let hosts = self
             .inner
-            .hosts(Default::default())
+            .hosts(query.map(Into::into).unwrap_or_default())
             .await
             .map_err(|e| Error::from_reason(e.to_string()))?;
         Ok(hosts.into_iter().map(|h| h.into()).collect())

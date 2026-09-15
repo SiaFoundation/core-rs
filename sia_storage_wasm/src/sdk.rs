@@ -105,13 +105,10 @@ impl Sdk {
     /// Detaches an object from a sharing key, leaving the key and its other
     /// attachments in place.
     #[wasm_bindgen(js_name = "unshareObject")]
-    pub async fn unshare_object(
-        &self,
-        key: &SharingKey,
-        object: &PinnedObject,
-    ) -> Result<(), JsError> {
+    pub async fn unshare_object(&self, key: &SharingKey, id: String) -> Result<(), JsError> {
+        let id = Hash256::from_str(&id).map_err(to_js_err)?;
         self.inner
-            .unshare_object(key.key(), &object.0.id())
+            .unshare_object(key.key(), &id)
             .await
             .map_err(to_js_err)
     }
