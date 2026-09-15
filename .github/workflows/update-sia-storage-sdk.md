@@ -25,8 +25,17 @@ models:
   default-ai-credits-pricing:
     input: 5.0
     output: 25.0
+# Every crate in a release fires this workflow within seconds. The `if:` above
+# is checked per job, after the run has joined this group, so a run it skips
+# still cancels the one before it. When napi published right after ffi, its run
+# cancelled the ffi run and no update ran. Only ffi and manual runs share the
+# group.
 concurrency:
-  group: update-sia-storage-sdk
+  group: >-
+    ${{ (github.event_name != 'release'
+    || startsWith(github.event.release.tag_name, 'sia_storage_ffi/v'))
+    && 'update-sia-storage-sdk'
+    || format('update-sia-storage-sdk-{0}', github.run_id) }}
   cancel-in-progress: true
 runs-on: ubuntu-latest
 timeout-minutes: 60

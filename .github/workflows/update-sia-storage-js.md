@@ -1,7 +1,7 @@
 ---
 emoji: 🦀
 name: Update sia-storage-js
-description: On a sia_storage_napi and sia_storage_wasm release, open a pull request in SiaFoundation/sia-storage-js that bumps the pinned Rust SDK, repairs the build, wraps newly exported bindings, and verifies the result with typecheck and the install integration test.
+description: On a sia_storage_napi and sia_storage_wasm release, open a pull request in SiaFoundation/sia-storage-js that bumps the pinned Rust SDK, repairs the build, wraps newly exported bindings, updates the README API reference, and verifies the result with typecheck and the install integration test.
 on:
   release:
     types: [published]
@@ -28,11 +28,18 @@ models:
   default-ai-credits-pricing:
     input: 5.0
     output: 25.0
-# A release burst publishes the napi and wasm releases seconds apart, so both
-# fire this workflow. Only the last run matters — it is the one that can see
-# both tags — so let each new run cancel the one before it.
+# Every crate in a release fires this workflow within seconds. The `if:` above
+# is checked per job, after the run has joined this group, so a run it skips
+# still cancels the one before it. When sia_mux published right after wasm, its
+# run cancelled the wasm run and no update ran. Only napi, wasm, and manual runs
+# share the group.
 concurrency:
-  group: update-sia-storage-js
+  group: >-
+    ${{ (github.event_name != 'release'
+    || startsWith(github.event.release.tag_name, 'sia_storage_napi/v')
+    || startsWith(github.event.release.tag_name, 'sia_storage_wasm/v'))
+    && 'update-sia-storage-js'
+    || format('update-sia-storage-js-{0}', github.run_id) }}
   cancel-in-progress: true
 runs-on: ubuntu-latest
 timeout-minutes: 45
@@ -168,9 +175,12 @@ safe-outputs:
       - "src/**"
       - "scripts/**"
       - "tsup.config.ts"
+      - "README.md"
+    # gh-aw protects README.md by default and would add a REQUEST_CHANGES review
+    # to every pull request that updates it.
     protected-files:
       policy: request_review
-      exclude: [".changeset/"]
+      exclude: [".changeset/", "README.md"]
 ---
 
 # Update sia-storage-js for a new Rust SDK release
@@ -269,6 +279,18 @@ if you can, and state the divergence prominently at the top of the pull request 
    surface. Strip the `sia_storage_napi/` and `sia_storage_wasm/` prefixes from the tags in
    the heading. If the entry needs more than the heading, follow it with prose — not a list.
 
+7. **Update the README.** Its `## API` section documents the public API. Bring it in
+   line with the target tag:
+
+   - rename or remove anything renamed or removed upstream, in the API section and in
+     the code examples
+   - add everything you exported in step 4 in the existing format, with a new `###`
+     section for each new class
+   - add to `## Node vs browser` any new method whose WASM and NAPI types differ
+
+   Check signatures against `wasm/sia_storage_wasm.d.ts` and
+   `src/node/napi.generated.d.ts`, not the changelog. Change nothing else in the README.
+
 ## Output
 
 Emit one `create_pull_request` targeting `SiaFoundation/sia-storage-js`. Title it
@@ -278,8 +300,10 @@ The body should cover, in prose:
 - the version move, and the upstream changes that motivated it
 - every export added to `src/index.ts` and `src/node/napi.ts`, and what each one is for
 - every build or type break you fixed, and how
+- the README entries you added, renamed, or removed
 - anything left undone: a binding you could not wrap, a failing check, or a tag divergence
 
 Call `noop` with a short explanation instead of opening a pull request when the pin is
-already current, the build and typecheck pass untouched, and the release exposes no new
-bindings — that is the expected outcome for a release that only changes crate internals.
+already current, the build and typecheck pass untouched, the release exposes no new
+bindings, and the README already matches the API — that is the expected outcome for a
+release that only changes crate internals.
