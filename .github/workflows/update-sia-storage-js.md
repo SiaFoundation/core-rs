@@ -68,11 +68,6 @@ steps:
     run: |
       rustup update stable
       rustup target add wasm32-unknown-unknown
-  - name: Cache Rust target + registry
-    uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-    with:
-      workspaces: sia-storage-js/rust/sia-sdk-rs
-      shared-key: napi-linux-x64
   - name: Install wasm-pack
     run: cargo install wasm-pack --locked
   - name: Prepare Rust SDK checkout and binding diff
