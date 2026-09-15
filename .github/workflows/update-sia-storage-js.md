@@ -175,9 +175,16 @@ safe-outputs:
       - "src/**"
       - "scripts/**"
       - "tsup.config.ts"
+      - "tsconfig.json"
       - "README.md"
+      # sia-storage-js's release bumps versions in package.json without updating
+      # bun.lock, so `bun install` can rewrite the lockfile.
+      - "bun.lock"
+      - "package.json"
+      - ".gitignore"
     # gh-aw protects README.md by default and would add a REQUEST_CHANGES review
-    # to every pull request that updates it.
+    # to every pull request that updates it. package.json stays protected so
+    # dependency changes still get that review.
     protected-files:
       policy: request_review
       exclude: [".changeset/", "README.md"]
@@ -290,6 +297,12 @@ if you can, and state the divergence prominently at the top of the pull request 
 
    Check signatures against `wasm/sia_storage_wasm.d.ts` and
    `src/node/napi.generated.d.ts`, not the changelog. Change nothing else in the README.
+
+8. **Check the changed files.** Run `git status` and revert any change outside
+   `.sia-sdk-rs.json`, `.changeset/`, `src/`, `scripts/`, `tsup.config.ts`,
+   `tsconfig.json`, `README.md`, `bun.lock`, `package.json`, and `.gitignore`. Any other
+   file rejects the whole pull request. List what you reverted in the body, along with
+   any `.github/` workflow change the update needs.
 
 ## Output
 
