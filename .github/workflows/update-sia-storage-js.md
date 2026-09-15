@@ -3,6 +3,7 @@ emoji: 🦀
 name: Update sia-storage-js
 description: On a sia_storage_napi and sia_storage_wasm release, open a pull request in SiaFoundation/sia-storage-js that bumps the pinned Rust SDK, repairs the build, wraps newly exported bindings, updates the README API reference, and verifies the result with typecheck and the install integration test.
 on:
+  bots: ["sia-ci-bot[bot]"]
   release:
     types: [published]
   workflow_dispatch:

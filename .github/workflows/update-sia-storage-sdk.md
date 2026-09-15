@@ -3,6 +3,7 @@ emoji: 🧬
 name: Update sia-storage-sdk
 description: On a sia_storage_ffi release, open a pull request in SiaFoundation/sia-storage-sdk that repins the crate, regenerates the UniFFI bindings, and updates the hand-written Python, Swift, and Kotlin wrappers.
 on:
+  bots: ["sia-ci-bot[bot]"]
   release:
     types: [published]
   workflow_dispatch:
