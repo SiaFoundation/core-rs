@@ -1,3 +1,22 @@
+## 0.10.1 (2026-09-15)
+
+### Features
+
+#### Add host-query support to the bindings
+
+Added optional `HostQuery` parameters to `Sdk.hosts` and `SharedSdk.hosts` in
+the N-API and UniFFI bindings.
+
+Native bindings expose location, protocol, country, limit, and offset filters.
+WASM now exposes location filtering and continues to enforce QUIC because
+browser transports do not support SiaMux. Its generated TypeScript declaration
+now correctly marks every `HostQuery` field as optional.
+
+#### Expose the optimal packed-upload size
+
+Added `PackedUpload.optimal_data_size` to the N-API and UniFFI bindings,
+matching the core SDK and WASM binding.
+
 ## 0.10.0 (2026-09-14)
 
 ### Breaking Changes

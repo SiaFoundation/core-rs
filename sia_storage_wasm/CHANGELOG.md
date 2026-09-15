@@ -1,3 +1,29 @@
+## 0.7.0 (2026-09-15)
+
+### Breaking Changes
+
+#### Use object IDs when unsharing in WASM
+
+`Sdk.unshareObject` now takes the object's ID string instead of a complete
+`PinnedObject`, matching the core SDK and the native bindings.
+
+```js
+-await sdk.unshareObject(sharingKey, object);
++await sdk.unshareObject(sharingKey, object.id());
+```
+
+### Features
+
+#### Add host-query support to the bindings
+
+Added optional `HostQuery` parameters to `Sdk.hosts` and `SharedSdk.hosts` in
+the N-API and UniFFI bindings.
+
+Native bindings expose location, protocol, country, limit, and offset filters.
+WASM now exposes location filtering and continues to enforce QUIC because
+browser transports do not support SiaMux. Its generated TypeScript declaration
+now correctly marks every `HostQuery` field as optional.
+
 ## 0.6.0 (2026-09-14)
 
 ### Breaking Changes
