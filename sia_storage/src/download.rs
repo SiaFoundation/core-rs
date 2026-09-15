@@ -113,10 +113,12 @@ struct AwaitingRecovery {
 struct ShardsRecovered {
     shard_offset: usize,
     shards: Vec<Option<Vec<u8>>>,
+    slowest_winner: Duration,
 }
 
 struct SlabDecoded {
     data_shards: Vec<Bytes>,
+    slowest_winner: Duration,
 }
 
 struct DownloadResult {
@@ -305,6 +307,9 @@ impl SlabRecovery<AwaitingRecovery> {
             );
         }
         let mut recovered_shards: usize = 0;
+        // Longest read among the shards that finish the chunk. The loop returns
+        // the moment `min_shards` succeed, so every success seen here is one.
+        let mut slowest_winner = Duration::ZERO;
         let mut eligible = seq < popped_rx.borrow_and_update().saturating_add(RACE_WINDOW);
         let mut last_event = Instant::now();
 
@@ -316,6 +321,7 @@ impl SlabRecovery<AwaitingRecovery> {
                     match result {
                         Ok(data) => {
                             recovered_shards += 1;
+                            slowest_winner = slowest_winner.max(elapsed);
                             let shard_size = data.len();
                             shards[task.shard_index] = Some(Vec::from(data));
                             if recovered_shards <= min_shards && let Some(callback) = &shard_downloaded {
@@ -342,6 +348,7 @@ impl SlabRecovery<AwaitingRecovery> {
                                     state: ShardsRecovered {
                                         shard_offset,
                                         shards,
+                                        slowest_winner,
                                     },
                                 });
                             }
@@ -411,12 +418,21 @@ impl SlabRecovery<ShardsRecovered> {
             encryption_key: self.encryption_key,
             offset: self.offset,
             length: self.length,
-            state: SlabDecoded { data_shards },
+            state: SlabDecoded {
+                data_shards,
+                slowest_winner: self.state.slowest_winner,
+            },
         })
     }
 }
 
 impl SlabRecovery<SlabDecoded> {
+    /// Longest sector read among the shards that finished this chunk, which is
+    /// what the inflight controller samples.
+    fn slowest_winner(&self) -> Duration {
+        self.state.slowest_winner
+    }
+
     async fn write<W: AsyncWrite + Unpin>(self, w: &mut W) -> Result<(), DownloadError> {
         let skip = self.offset % (SEGMENT_SIZE * self.state.data_shards.len());
         ErasureCoder::write_data_shards(w, &self.state.data_shards, skip, self.length).await?;
@@ -617,8 +633,11 @@ impl Download {
                 &chunk_slab.slab.encryption_key,
             ),
         };
-        // The limit counts chunks, so a chunk is what gets sampled: goodput then
-        // reads as chunks over chunk latency, the rate the download progresses at.
+        // The limit counts chunks, so a chunk is what gets sampled. The latency
+        // reported is the slowest of the reads that finished the chunk, not the
+        // chunk's wall time: a chunk that sat idle waiting for `race_timeout` to
+        // replace one bad host says nothing about the link, and charging that
+        // stall to the pipeline reads as congestion that isn't there.
         let controller = self.controller.clone();
         let permit = controller.sample();
         let recovery = SlabRecovery::new(
@@ -632,22 +651,25 @@ impl Download {
         );
         self.queue
             .push_back(AbortOnDropHandle::new(maybe_spawn!(async move {
-                let started = Instant::now();
                 let recovered = async move {
                     let recovery = recovery?;
                     let mut buf = Vec::with_capacity(len);
-                    recovery
+                    let decoded = recovery
                         .recover_shards(shard_progress_callback)
                         .await?
-                        .decode()?
-                        .write(&mut buf)
-                        .await?;
+                        .decode()?;
+                    let slowest_winner = decoded.slowest_winner();
+                    decoded.write(&mut buf).await?;
                     cipher.apply_keystream(&mut buf);
-                    Ok::<_, DownloadError>(buf)
+                    Ok::<_, DownloadError>((buf, slowest_winner))
                 }
                 .await;
-                controller.record(permit, started.elapsed(), recovered.is_ok());
-                recovered
+                // A chunk that never reached `min_shards` has no winner to time.
+                // It still counts as a completion, so the `successes == 0`
+                // back-off and `record_timeout` remain the signals for failure.
+                let elapsed = recovered.as_ref().map(|(_, d)| *d).unwrap_or_default();
+                controller.record(permit, elapsed, recovered.is_ok());
+                recovered.map(|(buf, _)| buf)
             })));
         true
     }
@@ -1491,6 +1513,55 @@ mod test {
             start.elapsed() < Duration::from_millis(1200),
             "chunk at the read head should race slow hosts: {:?}",
             start.elapsed()
+        );
+    }
+
+    /// The latency handed to the inflight controller is the slowest read that
+    /// finished the chunk, not the chunk's wall time. Every initial host here
+    /// stalls and the chunk cannot race until it enters the window, so most of
+    /// its wall time is spent idle — that is a bad set of peers, not a saturated
+    /// link, and must not read as congestion.
+    #[sia_core_derive::cross_target_test]
+    async fn test_chunk_latency_excludes_the_race_stall() {
+        let (hosts, app_key, slab) = racing_setup(Duration::from_millis(1500)).await;
+        let popped_tx = watch::channel(0).0;
+        let tx = popped_tx.clone();
+        maybe_spawn!(async move {
+            sleep(Duration::from_millis(200)).await;
+            tx.send_modify(|p| *p += 1);
+        });
+        let start = Instant::now();
+        let controller = Arc::new(InflightController::new(
+            INITIAL_INFLIGHT,
+            MIN_INFLIGHT,
+            100,
+            10,
+        ));
+        let permit = controller.sample();
+        let decoded = SlabRecovery::new(
+            hosts.clone(),
+            controller,
+            app_key.clone(),
+            permit,
+            racing_chunk(&slab),
+            RACE_WINDOW,
+            popped_tx,
+        )
+        .unwrap()
+        .recover_shards(None)
+        .await
+        .unwrap()
+        .decode()
+        .unwrap();
+        let wall = start.elapsed();
+        let sampled = decoded.slowest_winner();
+        assert!(
+            wall >= Duration::from_millis(190),
+            "the chunk should have idled until it entered the window: {wall:?}"
+        );
+        assert!(
+            sampled * 3 < wall,
+            "sampled latency should be the winning read, not the stall: {sampled:?} of {wall:?}"
         );
     }
 

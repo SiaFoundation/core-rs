@@ -122,6 +122,11 @@ impl State {
 /// Controller for a pipeline's inflight limit. The signal is goodput estimated
 /// via Little's law (`successes * limit / Σ latency`). The limit doubles while
 /// raising it raises goodput and backs off only when it declines.
+///
+/// Every decision compares goodput against a previous goodput, so only its
+/// shape in the limit matters, never its absolute scale. A caller may therefore
+/// report the part of an operation that contends for the link rather than its
+/// full residence time — see [`Self::record`].
 #[derive(Debug)]
 pub(crate) struct InflightController {
     state: Mutex<State>,
@@ -195,6 +200,11 @@ impl InflightController {
     /// Records a completed operation and returns the change to the limit.
     /// `permit` is the token from [`Self::sample`] at dispatch. A completion
     /// from a superseded limit is discarded.
+    ///
+    /// `elapsed` should cover only the time the operation spent contending for
+    /// the link. Time an operation spends idle — parked on a timer, waiting on a
+    /// replacement for a bad peer — is not evidence the pipeline is saturated,
+    /// and including it reads as congestion that backing off cannot relieve.
     pub(crate) fn record(&self, permit: SamplePermit, elapsed: Duration, ok: bool) -> isize {
         let mut state = self.state.lock().unwrap();
         if permit.generation != state.generation {
