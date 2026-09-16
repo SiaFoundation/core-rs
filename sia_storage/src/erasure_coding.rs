@@ -1,4 +1,6 @@
+use std::cmp::Ordering;
 use std::mem;
+use std::sync::Arc;
 
 use bytes::Bytes;
 use sia_core::rhp4::{SECTOR_SIZE, SEGMENT_SIZE};
@@ -8,6 +10,7 @@ use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::EncryptionKey;
 use crate::encryption::Chacha20Cipher;
+use crate::shard_pool::{PooledShard, ShardPool};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -37,7 +40,7 @@ impl ErasureCoder {
 
     /// encodes the shards using reed solomon erasure coding,
     /// computing the parity shards and overwriting their values.
-    pub fn encode_shards(&self, shards: &mut [Vec<u8>]) -> Result<()> {
+    pub fn encode_shards<T: AsRef<[u8]> + AsMut<[u8]>>(&self, shards: &mut [T]) -> Result<()> {
         self.encoder.encode(shards)?;
         Ok(())
     }
@@ -88,8 +91,10 @@ impl ErasureCoder {
 /// partial slab.
 pub(crate) struct SlabReader {
     data_shards: usize,
+    total_shards: usize,
     encryption_key: EncryptionKey,
-    shards: Vec<Vec<u8>>,
+    pool: Arc<ShardPool>,
+    shards: Vec<PooledShard>,
     length: usize,
     total_length: u64,
 }
@@ -97,16 +102,17 @@ pub(crate) struct SlabReader {
 pub(crate) struct ReadSlab {
     pub encryption_key: EncryptionKey,
     pub length: usize,
-    pub shards: Vec<Vec<u8>>,
+    pub shards: Vec<PooledShard>,
 }
 
 impl SlabReader {
-    pub(crate) fn new(data_shards: usize, parity_shards: usize) -> Self {
-        let total_shards = data_shards + parity_shards;
+    pub(crate) fn new(data_shards: usize, parity_shards: usize, pool: Arc<ShardPool>) -> Self {
         Self {
             data_shards,
+            total_shards: data_shards + parity_shards,
             encryption_key: rand::random::<[u8; 32]>().into(),
-            shards: vec![vec![0u8; SECTOR_SIZE]; total_shards],
+            pool,
+            shards: Vec::new(),
             length: 0,
             total_length: 0,
         }
@@ -135,7 +141,8 @@ impl SlabReader {
             return None;
         }
         let length = self.length;
-        let shards = mem::take(&mut self.shards);
+        let mut shards = mem::take(&mut self.shards);
+        zero_tail(&mut shards[..self.data_shards], length);
         let encryption_key = mem::replace(&mut self.encryption_key, [0u8; 32].into());
         Some(ReadSlab {
             encryption_key,
@@ -158,6 +165,9 @@ impl SlabReader {
         let remaining = self.optimal_data_size() - self.length;
         if remaining == 0 {
             return Ok((0, None));
+        }
+        if self.shards.is_empty() {
+            self.shards = self.pool.take_slab(self.total_shards);
         }
         let mut cipher = Chacha20Cipher::new_v1(data_key, self.length as u64, &self.encryption_key);
         let mut r = r.take(remaining as u64);
@@ -186,8 +196,7 @@ impl SlabReader {
         }
         let slab = if self.length == self.optimal_data_size() {
             let length = mem::take(&mut self.length);
-            let total_shards = self.shards.len();
-            let shards = mem::replace(&mut self.shards, vec![vec![0u8; SECTOR_SIZE]; total_shards]);
+            let shards = mem::take(&mut self.shards);
             let encryption_key =
                 mem::replace(&mut self.encryption_key, rand::random::<[u8; 32]>().into());
             Some(ReadSlab {
@@ -199,6 +208,23 @@ impl SlabReader {
             None
         };
         Ok((total_read, slab))
+    }
+}
+
+/// Zeroes the unwritten tail of each data shard of a partial slab.
+fn zero_tail(data_shards: &mut [PooledShard], length: usize) {
+    let segments = length / SEGMENT_SIZE;
+    let partial = length % SEGMENT_SIZE;
+    let rows = segments / data_shards.len();
+    let col = segments % data_shards.len();
+    for (i, shard) in data_shards.iter_mut().enumerate() {
+        let written = rows * SEGMENT_SIZE
+            + match i.cmp(&col) {
+                Ordering::Less => SEGMENT_SIZE,
+                Ordering::Equal => partial,
+                Ordering::Greater => 0,
+            };
+        shard[written..].fill(0);
     }
 }
 
@@ -216,7 +242,7 @@ mod tests {
     /// data shards to plaintext so the striping assertions can compare against
     /// the original input. Mirrors `read_slab`'s logical-order walk.
     fn decrypt_data_shards(
-        shards: &mut [Vec<u8>],
+        shards: &mut [PooledShard],
         data_shards: usize,
         data_key: &EncryptionKey,
         slab_key: &EncryptionKey,
@@ -288,7 +314,8 @@ mod tests {
             getrandom::fill(&mut data).unwrap();
 
             let data_key = EncryptionKey::from([7u8; 32]);
-            let mut reader = SlabReader::new(DATA_SHARDS, PARITY_SHARDS);
+            let pool = ShardPool::new(DATA_SHARDS + PARITY_SHARDS);
+            let mut reader = SlabReader::new(DATA_SHARDS, PARITY_SHARDS, pool);
             let (n, slab) = reader
                 .read_slab(data_key.clone(), &mut Cursor::new(data.clone()))
                 .await
@@ -344,7 +371,8 @@ mod tests {
         let data = Bytes::from(data);
 
         let data_key = EncryptionKey::from([7u8; 32]);
-        let mut reader = SlabReader::new(DATA_SHARDS, PARITY_SHARDS);
+        let pool = ShardPool::new(DATA_SHARDS + PARITY_SHARDS);
+        let mut reader = SlabReader::new(DATA_SHARDS, PARITY_SHARDS, pool);
         let (n, slab) = reader
             .read_slab(data_key.clone(), &mut Cursor::new(data.clone()))
             .await
@@ -366,7 +394,7 @@ mod tests {
         // we expect 5 shards and the last one is an empty parity shard
         assert_eq!(shards.len(), 5);
         assert_eq!(size, SECTOR_SIZE * 7 / 2);
-        assert_eq!(shards[4], vec![0u8; SECTOR_SIZE]); // parity shard should be empty
+        assert!(shards[4].iter().all(|&b| b == 0)); // parity shard should be empty
 
         for shard in &shards[..4] {
             // every shard should be of SECTOR_SIZE
@@ -400,10 +428,10 @@ mod tests {
         // encoding the read shards should succeed without errors and cause the
         // parity shard to be filled
         coder.encode_shards(&mut shards).unwrap();
-        assert_ne!(shards[4], vec![0u8; SECTOR_SIZE]);
+        assert!(shards[4].iter().any(|&b| b != 0));
 
         // joining the shards back together should result in the original data
-        let shards: Vec<Bytes> = shards.into_iter().map(Bytes::from).collect();
+        let shards: Vec<Bytes> = shards.into_iter().map(Bytes::from_owner).collect();
         let mut joined_data = Vec::new();
         ErasureCoder::write_data_shards(&mut joined_data, &shards[..DATA_SHARDS], 0, data.len())
             .await
@@ -433,6 +461,91 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(joined_data, data[data.len() / 2..]);
+    }
+
+    #[sia_core_derive::cross_target_test]
+    async fn test_full_slabs_reuse_pool_buffers() {
+        const DATA_SHARDS: usize = 2;
+        const PARITY_SHARDS: usize = 1;
+        const TOTAL_SHARDS: usize = DATA_SHARDS + PARITY_SHARDS;
+
+        let pool = ShardPool::new(TOTAL_SHARDS);
+        let mut reader = SlabReader::new(DATA_SHARDS, PARITY_SHARDS, pool.clone());
+        let data_key = EncryptionKey::from([7u8; 32]);
+        let mut cursor = Cursor::new(vec![1u8; SECTOR_SIZE * DATA_SHARDS * 2]);
+        for _ in 0..2 {
+            let (n, slab) = reader
+                .read_slab(data_key.clone(), &mut cursor)
+                .await
+                .unwrap();
+            assert_eq!(n, SECTOR_SIZE * DATA_SHARDS);
+            let slab = slab.expect("expected full slab");
+            assert_eq!(slab.shards.len(), TOTAL_SHARDS);
+        }
+        assert!(reader.finish().is_none());
+        assert_eq!(
+            pool.allocated(),
+            TOTAL_SHARDS,
+            "second slab must reuse the first slab's buffers"
+        );
+    }
+
+    #[sia_core_derive::cross_target_test]
+    async fn test_reused_buffers_are_zero_padded() {
+        const DATA_SHARDS: usize = 2;
+        const PARITY_SHARDS: usize = 1;
+        const TOTAL_SHARDS: usize = DATA_SHARDS + PARITY_SHARDS;
+
+        // dirty every buffer the pool will hand out
+        let pool = ShardPool::new(TOTAL_SHARDS);
+        for mut shard in pool.take_slab(TOTAL_SHARDS) {
+            shard.fill(0xFF);
+        }
+
+        // three full segments and a partial fourth: shard 0 gets segments 0
+        // and 2, shard 1 gets segment 1 and the 5-byte tail of segment 3
+        let length = SEGMENT_SIZE * 3 + 5;
+        let data_key = EncryptionKey::from([7u8; 32]);
+        let mut reader = SlabReader::new(DATA_SHARDS, PARITY_SHARDS, pool.clone());
+        let (n, slab) = reader
+            .read_slab(data_key.clone(), &mut Cursor::new(vec![1u8; length]))
+            .await
+            .unwrap();
+        assert_eq!(n, length);
+        assert!(slab.is_none());
+        let slab = reader.finish().unwrap();
+        assert_eq!(
+            pool.allocated(),
+            TOTAL_SHARDS,
+            "reader must reuse dirty buffers"
+        );
+
+        let mut shards = slab.shards;
+        decrypt_data_shards(
+            &mut shards,
+            DATA_SHARDS,
+            &data_key,
+            &slab.encryption_key,
+            length,
+        );
+        let written = [2 * SEGMENT_SIZE, SEGMENT_SIZE + 5];
+        for (i, shard) in shards[..DATA_SHARDS].iter().enumerate() {
+            assert!(
+                shard[..written[i]].iter().all(|&b| b == 1),
+                "shard {i} data mismatch"
+            );
+            assert!(
+                shard[written[i]..].iter().all(|&b| b == 0),
+                "shard {i} padding must be zeroed"
+            );
+        }
+        // parity is left stale; encode overwrites every byte of it
+        assert!(shards[DATA_SHARDS].iter().all(|&b| b == 0xFF));
+        ErasureCoder::new(DATA_SHARDS, PARITY_SHARDS)
+            .unwrap()
+            .encode_shards(&mut shards)
+            .unwrap();
+        assert!(shards[DATA_SHARDS].iter().any(|&b| b != 0xFF));
     }
 
     #[sia_core_derive::cross_target_test]

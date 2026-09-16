@@ -60,6 +60,7 @@ mod hosts;
 mod object_encryption;
 mod rhp4;
 mod sdk;
+mod shard_pool;
 mod shared_sdk;
 mod sharing;
 mod slabs;

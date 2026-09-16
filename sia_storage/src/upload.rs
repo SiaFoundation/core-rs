@@ -9,6 +9,7 @@ use crate::congestion::{InflightController, SamplePermit};
 use crate::encryption::{EncryptionKey, encrypt_shard};
 use crate::erasure_coding::{self, ErasureCoder, ReadSlab, SlabReader};
 use crate::hosts::{HostQueue, InflightGuard, QueueError, RPCError};
+use crate::shard_pool::ShardPool;
 use crate::slabs::SlabVersion;
 use crate::task::AbortOnDropHandle;
 use crate::time::{Duration, Elapsed, Instant, sleep};
@@ -494,6 +495,8 @@ impl Upload {
         let max_buffered_slabs = options
             .max_buffered_slabs
             .unwrap_or_else(|| default_slabs_in_memory(options.slab_size()));
+        let cap = max_buffered_slabs.saturating_mul(total_shards);
+        let pool = ShardPool::new(cap.saturating_add(total_shards));
         Ok(Self {
             client,
             api_client,
@@ -501,13 +504,10 @@ impl Upload {
             slab_buffer: Some(SlabReader::new(
                 options.data_shards as usize,
                 options.parity_shards as usize,
+                pool,
             )),
             erasure_coder: Arc::new(erasure_coder),
-            limiter: Arc::new(UploadLimiter::new(
-                INITIAL_INFLIGHT,
-                MIN_INFLIGHT,
-                max_buffered_slabs.saturating_mul(total_shards),
-            )),
+            limiter: Arc::new(UploadLimiter::new(INITIAL_INFLIGHT, MIN_INFLIGHT, cap)),
             waiting: watch::channel(0).0,
             slab_tasks: VecDeque::new(),
             shard_uploaded: options.shard_uploaded,
@@ -557,7 +557,7 @@ impl Upload {
                         encrypt_shard(&owned_slab_key, shard_index as u8, 0, &mut shard);
                         shard
                     });
-                    Ok((shard_index, Bytes::from(shard)))
+                    Ok((shard_index, Bytes::from_owner(shard)))
                 });
             }
             let mut shards = vec![Bytes::new(); total_shards];
